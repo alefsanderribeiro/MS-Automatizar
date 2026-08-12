@@ -100,6 +100,81 @@ python -m automatizar folha ...
 
 ---
 
+## 🚀 Rodando com Docker
+
+Suba **MongoDB 8.0**, **Redis 7.2** e a **WhatsApp API v9** (go-whatsapp-web-multidevice) de uma vez, com volumes persistentes, usando o `docker-compose.yml` na raiz do repositório.
+
+### Pré-requisitos
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/) (incluso no Docker Desktop)
+
+### Passo a passo
+
+```bash
+# 1. Clonar o repositório (se ainda não fez)
+git clone https://github.com/alefsanderribeiro/MS-Automatizar.git
+cd MS-Automatizar
+
+# 2. Criar o .env a partir do exemplo e editar as SENHAS
+cp .env.example .env
+nano .env   # defina MONGO_ROOT_PASSWORD, REDIS_PASSWORD e WHATSAPP_BASIC_AUTH
+
+# 3. Subir a infraestrutura (MongoDB + Redis + WhatsApp API)
+docker compose up -d
+
+# 4. Conferir os serviços
+docker compose ps
+```
+
+> ⚠️ As variáveis obrigatórias (`MONGO_ROOT_PASSWORD`, `REDIS_PASSWORD`, `WHATSAPP_BASIC_AUTH`) são **exigidas** pelo compose — os serviços não sobem sem elas.
+
+### O que sobe
+
+| Serviço         | Imagem                                        | Porta interna | Uso                                    |
+|-----------------|-----------------------------------------------|---------------|----------------------------------------|
+| `mongodb`       | `mongo:8.0`                                   | `27017`       | Banco de dados principal               |
+| `redis`         | `redis:7.2-alpine`                            | `6379`        | Cache                                  |
+| `whatsapp-api`  | `aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0` | `3000` | API de WhatsApp (multidevice)          |
+
+### Volumes persistentes
+
+Os dados persistem entre restarts (named volumes com `driver: local`):
+
+- `mongodb_data` — dados do MongoDB (`/data/db`)
+- `mongodb_log` — logs do MongoDB (`/var/log/mongodb`)
+- `redis_data` — dados do Redis (`/data`)
+- `whatsapp_data` — storages da WhatsApp API (`/app/storages`)
+
+### Healthchecks e logs
+
+- **Verificar saúde:** `docker compose ps` mostra o estado de cada container.
+- **Logs em tempo real:** `docker compose logs -f` (ou `docker compose logs -f whatsapp-api`).
+- **Parar sem apagar dados:** `docker compose down` mantém os volumes; use `docker compose down -v` apenas se quiser apagar tudo.
+
+### Endpoints da WhatsApp API
+
+- `GET /health` — endpoint **público** (usado pelo healthcheck, sem autenticação).
+- Demais endpoints exigem **Basic Auth** (o `WHATSAPP_BASIC_AUTH` em formato `usuario:senha`).
+
+### Como o app usa essas infras
+
+O app Python conecta aos serviços via variáveis do `.env` do projeto:
+
+```ini
+MONGO_URI=mongodb://usuario:senha@localhost:27017/MS_Automatizar?authSource=admin
+REDIS_HOST=localhost
+WHATSAPP_API_URL=http://localhost:3001
+```
+
+Se os containers rodarem na mesma máquina, use `localhost` + a porta host definida no `.env` da infra (`MONGO_PORT`, `REDIS_PORT`, `WHATSAPP_PORT`).
+
+### Referência
+
+- Documentação do [go-whatsapp-web-multidevice](https://github.com/aldinokemal2104/go-whatsapp-web-multidevice)
+
+---
+
 ## 📁 Estrutura do Projeto
 
 ```
