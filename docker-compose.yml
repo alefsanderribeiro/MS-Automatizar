@@ -1,0 +1,129 @@
+# ============================================================
+# MS-Automatizar — Infraestrutura em UM único grupo
+# ============================================================
+# Serviços: MongoDB 8.0 + Redis 7.2 + WhatsApp API (go-whatsapp)
+# Todos na mesma rede, sobem juntos com um único comando.
+#
+# Como rodar:
+#   cp .env.example .env           # crie o .env com suas senhas
+#   docker compose up -d           # sobe todos os serviços
+#   docker compose ps              # status dos serviços
+#   docker compose logs -f         # acompanhar os logs
+#
+# ⚠️ Autenticação OBRIGATÓRIA: o compose NÃO sobe sem as variáveis
+#   obrigatórias definidas no .env (MONGO_ROOT_PASSWORD, REDIS_PASSWORD,
+#   WHATSAPP_BASIC_AUTH).
+#
+# Dentro da rede do compose, os serviços conversam pelos nomes internos
+#   (mongodb:27017, redis:6379, whatsapp-api:3000).
+# ============================================================
+
+name: ms-automatizar
+
+services:
+  # ---------- MongoDB 8.0 ----------
+  mongodb:
+    image: mongo:8.0
+    container_name: ms-automatizar-mongodb
+    restart: unless-stopped
+    ports:
+      - "${BIND_IP:-127.0.0.1}:${MONGO_PORT:-27017}:27017"
+    environment:
+      # Workaround de compatibilidade de kernel (glibc RSEQ) para MongoDB 8.x
+      - GLIBC_TUNABLES=glibc.pthread.rseq=1
+      # Credenciais OBRIGATÓRIAS (defina no .env)
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME:?Defina MONGO_ROOT_USERNAME no .env}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:?Defina MONGO_ROOT_PASSWORD no .env}
+      # Banco criado automaticamente no primeiro boot
+      - MONGO_INITDB_DATABASE=MS_Automatizar
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_log:/var/log/mongodb
+    networks:
+      - ms-automatizar-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------- Redis 7.2 ----------
+  redis:
+    image: redis:7.2-alpine
+    container_name: ms-automatizar-redis
+    restart: unless-stopped
+    ports:
+      - "${BIND_IP:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:?Defina REDIS_PASSWORD no .env}
+      --bind 0.0.0.0
+    networks:
+      - ms-automatizar-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?Defina REDIS_PASSWORD no .env}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ---------- WhatsApp API (go-whatsapp-web-multidevice) ----------
+  # Deploy puro de API: dashboard desabilitado (APP_UI_ENABLED=false e
+  # APP_UI_AUTO_UPDATE=false) para evitar download em rede restrita.
+  # Endpoints HTTP, header X-Device-Id e Basic Auth do projeto original.
+  whatsapp-api:
+    image: aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0
+    container_name: ms-automatizar-whatsapp
+    restart: unless-stopped
+    ports:
+      - "${BIND_IP:-127.0.0.1}:${WHATSAPP_PORT:-3001}:3000"
+    environment:
+      - APP_PORT=3000
+      - APP_DEBUG=false
+      - APP_LOG_LEVEL=INFO
+      - APP_ACCOUNT_VALIDATION=false
+      # v9: dashboard externo (gowa-ui) — desabilitado para deploy puro de API
+      - APP_UI_ENABLED=false
+      - APP_UI_AUTO_UPDATE=false
+      # Basic Auth OBRIGATÓRIO (formato: usuario:senha)
+      # O client (whatsapp_service.py) envia Authorization: Basic base64(user:pass)
+      - APP_BASIC_AUTH=${WHATSAPP_BASIC_AUTH:?Defina WHATSAPP_BASIC_AUTH no .env (formato usuario:senha)}
+      # Webhook (opcional)
+      # - WHATSAPP_WEBHOOK=http://host.docker.internal:8080/webhook
+    volumes:
+      - whatsapp_data:/app/storages
+    command:
+      - rest
+    networks:
+      - ms-automatizar-network
+    healthcheck:
+      # /health é o endpoint público (sem auth). Demais endpoints exigem Basic Auth.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# ---------- Rede única do grupo ----------
+networks:
+  ms-automatizar-network:
+    driver: bridge
+
+# ---------- Volumes persistentes ----------
+volumes:
+  mongodb_data:
+    driver: local
+    name: ms-automatizar-mongodb-data
+  mongodb_log:
+    driver: local
+    name: ms-automatizar-mongodb-log
+  redis_data:
+    driver: local
+    name: ms-automatizar-redis-data
+  whatsapp_data:
+    driver: local
+    name: ms-automatizar-whatsapp-data
