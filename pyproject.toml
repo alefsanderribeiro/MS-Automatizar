@@ -1,0 +1,71 @@
+[project]
+name = "ms-automatizar"
+version = "0.9.8"
+description = "O **MS-Automatizar** é um projeto desenvolvido para automatizar processos administrativos, como renomeação de arquivos (holerites), geração de folhas de ponto, envio automatizado (e-mail/WhatsApp) e processamento inteligente com IA. Inclui análise de documentos manuscritos, persistência MongoDB com modelos Pydantic, arquitetura modular de serviços e autocadastro de funcionários/empresas. O objetivo do projeto é facilitar o trabalho administrativo, tornando-o mais eficiente e menos suscetível a erros humanos."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "Alefsander Ribeiro Nascimento", email = "alefsander.pvh14@gmail.com"},
+]
+license = {text = "MIT"}
+keywords = ["automation", "ocr", "pdf", "administrative", "windows", "whatsapp", "email", "holerite", "payslip", "gemini", "mongodb"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "colorama>=0.4.6",
+    "google-genai>=1.11.0",
+    "jinja2>=3.1.6",
+    "mistralai>=1.5.1",
+    "openpyxl>=3.1.5",
+    "pandas>=2.2.3",
+    "pypdfium2>=5.0.0",
+    "pillow>=11.1.0",
+    "pymongo>=4.15.3",
+    "pypdf2>=3.0.1",
+    "python-dotenv>=1.0.1",
+    "questionary==2.1.1",
+    "redis==5.2.1",
+    "requests>=2.32.3",
+    "rich==14.3.2",
+    "weasyprint>=68.1",
+]
+
+[project.scripts]
+ms-automatizar = "automatizar:main"
+
+[project.urls]
+Repository = "https://github.com/alefsanderribeiro/ms-automatizar"
+Issues = "https://github.com/alefsanderribeiro/ms-automatizar/issues"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.env", "*.txt", "*.md", "*.yml", "*.yaml", "*.json", "*.toml"]
+"src" = ["*"]
+
+[dependency-groups]
+dev = [
+    "faker>=40.36.0",
+    "freezegun>=1.5.5",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+]

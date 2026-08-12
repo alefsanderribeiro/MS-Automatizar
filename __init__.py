@@ -1,0 +1,6 @@
+__version__ = "0.9.8"
+__autor__ = "Alefsander Ribeiro"
+__email__ = "alefsander.pvh14@gmail.com"
+__github__ = "https://github.com/alefsanderribeiro"
+__description__ = "Automatiza tarefas com Python"
+__license__ = "MIT"

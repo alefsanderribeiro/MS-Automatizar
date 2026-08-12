@@ -1,0 +1,65 @@
+# ============ Segredos e dados sensíveis ============
+.env
+.env.*
+*.env
+!.env_exemplo              # permissão caso exista exemplo (mantido fora por segurança)
+.mcp.json
+.mcp.jason2
+backup_mongo/
+*.mongo
+
+# ============ Dados reais ============
+*.xlsx
+*.xls
+*.ods
+*.csv
+!requirements*.txt
+*.bson
+*.db
+*.sqlite
+*.sqlite3
+funcionarios_export_*.json
+folha_existente_teste.json
+src/data/
+logs/
+
+# ============ Config local / agentes ============
+.claude/
+.claude.json
+.omc/
+.vscode/
+.cline/
+
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.dylib
+*.dll
+*.egg-info/
+*.egg
+build/
+dist/
+develop-eggs/
+.eggs/
+.installed.cfg
+.Python
+venv/
+.venv/
+env/
+.coverage
+coverage_html/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============ Cache / gerados ============
+*.log
+.uvcache/
+
+# ============ IDE / SO ============
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

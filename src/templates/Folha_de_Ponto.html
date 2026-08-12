@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <title>Folha de Ponto Individual</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+	<style type="text/css">
+		/* ======== CONFIGURAÇÃO DE PÁGINA ======== */
+		@page {
+			size: A4;
+			margin: 10mm;
+			margin-bottom: 5mm;
+		}
+		
+		* {
+			margin: 0;
+			padding: 0;
+		}
+		
+		html, body {
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			background: white;
+		}
+		
+		body { 
+            font-family: "Calibri", sans-serif; 
+            font-size: 10pt;
+            line-height: 1.2;
+            color: #000000;
+        }
+		
+		h2 {
+			text-align: center;
+			margin: 5px 0;
+			font-size: 14pt;
+			font-weight: bold;
+		}
+		
+		/* ======== TABELAS ======== */
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			table-layout: fixed;
+			margin-bottom: 0;
+		}
+		
+		/* ======== TABELA DE CABEÇALHO ======== */
+		.folha-ponto-cabecalho {
+			width: 100%;
+			margin-bottom: 2px;
+		}
+		
+		.folha-ponto-cabecalho td, 
+		.folha-ponto-cabecalho th {
+			border: 1px solid #000000;
+			font-family: Calibri;
+			font-size: 10pt;
+			color: #000000;
+			padding: 2px 4px;
+			height: 18px;
+			vertical-align: middle;
+    		white-space: nowrap; /* Evita quebra de linha, forçando ajuste de fonte */
+			word-wrap: break-word;
+			overflow: hidden; /* Esconde overflow até ajustar */
+		}
+		
+		.folha-ponto-cabecalho tr {
+			height: 18px;
+		}
+		
+		/* ======== TABELA DE FREQUÊNCIA ======== */
+		.folha-ponto-frequencia {
+			width: 100%;
+			height: auto;
+			margin: 0;
+		}
+		
+		.folha-ponto-frequencia td, 
+		.folha-ponto-frequencia th {
+			border: 1px solid #000000;
+			font-family: Calibri;
+			font-size: 10pt;
+			color: #000000;
+			text-align: center;
+			padding: 1px 2px;
+			height: 22px;
+			vertical-align: middle;
+			word-wrap: break-word;
+			overflow: hidden;
+		}
+		
+		.folha-ponto-frequencia tr {
+			height: 24px;
+		}
+		
+		.folha-ponto-frequencia th {
+			font-weight: bold;
+			background-color: #FFFFFF;
+		}
+		
+		/* ======== LARGURAS DAS COLUNAS ======== */
+		/* Coluna de Dia (número) */
+		.col-dia-numero {
+			font-weight: bold;
+			width: 5%;
+		}
+		
+		/* Coluna de Dia da Semana */
+		.col-dia-semana {
+			font-weight: bold;
+			width: 10%;
+		}
+		
+		/* Colunas de Horário (Início, Intervalo início, Intervalo fim, Término) */
+		.col-horario {
+			width: 12%;
+		}
+		
+		/* Coluna de Observações */
+		.col-observacoes {
+			width: 48%;
+		}
+		
+		/* ======== ESTILOS DE CÉLULA ======== */
+		.dia-descanso td {
+			background-color: #D3D3D3 !important;
+			-webkit-print-color-adjust: exact;
+			color-adjust: exact;
+		}
+		
+		/* Alinhar conteúdos nas colunas */
+		td.col-dia-numero {
+			text-align: center;
+		}
+
+		td.col-dia-semana {
+			text-align: left;
+		}
+		
+		td.col-horario {
+			text-align: center;
+		}
+		
+		td.col-observacoes {
+			text-align: center;
+		}
+		
+		/* ======== PRINT CSS ======== */
+		@media print {
+			body {
+				margin: 0;
+				padding: 0;
+				width: 100%;
+				height: 100%;
+			}
+			
+			table {
+				page-break-inside: avoid;
+			}
+			
+			tr {
+				page-break-inside: avoid;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<h2>FOLHA PONTO INDIVIDUAL DE FUNCIONÁRIOS</h2>
+	
+	<!-- ======== TABELA DE INFORMAÇÕES ======== -->
+	<table class="folha-ponto-cabecalho">
+		<colgroup>
+			<col style="width: 15%;">
+			<col style="width: 12,5%;">
+			<col style="width: 12,5%;">
+			<col style="width: 12,5%;">
+			<col style="width: 14,5%;">
+			<col style="width: 8%;">
+			<col style="width: 12,5%;">
+			<col style="width: 12,5%;">
+		</colgroup>
+		
+		<tr>
+			<td colspan="1"><b>ID Folha Ponto:</b></td>
+			<td colspan="4">{{FP.id}}</td>
+			<td colspan="1"><b>Período:</b></td>
+			<td colspan="2">{{FP.periodo_inicio}} À {{FP.periodo_fim}}</td>
+		</tr>
+		<tr>
+			<td colspan="1"><b>Empresa:</b></td>
+			<td colspan="7">{{empresa.nome}}</td>
+		</tr>
+		<tr>
+			<td colspan="1"><b>Atividade:</b></td>
+			<td colspan="4">{{empresa.atividade}}</td>
+			<td colspan="1"><b>CNPJ:</b></td>
+			<td colspan="2">{{empresa.cnpj}}</td>
+		</tr>
+		<tr>
+			<td colspan="1"><b>Endereço:</b></td>
+			<td colspan="7">{{empresa.endereco}}</td>
+		</tr>
+		<tr>
+			<td colspan="1"><b>Funcionário:</b></td>
+			<td colspan="4">{{funcionario.nome}}</td>
+			<td colspan="1"><b>CPF:</b></td>
+			<td colspan="2">{{funcionario.cpf}}</td>
+		</tr>
+		<tr>
+			<td colspan="1"><b>Contrato:</b></td>
+			<td colspan="4">{{funcionario.contrato}}</td>
+			<td colspan="1"><b>Lotação:</b></td>
+			<td colspan="2">{{funcionario.lotacao}}</td>
+		</tr>
+		<tr>
+			<td colspan="1"><b>Horário:</b></td>
+			<td colspan="4">{{funcionario.horario}}</td>
+			<td colspan="1"><b>Cargo:</b></td>
+			<td colspan="2"> {{funcionario.cargo}}</td>
+		</tr>
+	</table>
+
+	<br>
+	<!-- ======== TABELA DE FREQUÊNCIA ======== -->
+	<table class="folha-ponto-frequencia">
+		<colgroup>
+			<col class="col-dia-numero" style="width: 5%;">
+			<col class="col-dia-semana" style="width: 10%;">
+			<col class="col-horario" style="width: 13%;">
+			<col class="col-horario" style="width: 13%;">
+			<col class="col-horario" style="width: 13%;">
+			<col class="col-horario" style="width: 13%;">
+			<col class="col-observacoes" style="width: 33%;">
+		</colgroup>
+		
+
+		<!-- Cabeçalho -->
+		<thead>
+			<tr>
+				<th colspan="2" rowspan="2">Dias</th>
+				<th colspan="4">Normal</th>
+				<th rowspan="2">Assinatura ou Observações</th>
+			</tr>
+			<tr>
+				<th class="col-horario">Início</th>
+				<th colspan="2">Intervalo</th>
+				<th class="col-horario">Término</th>
+			</tr>
+		</thead>
+		
+		<!-- Corpo com dias -->
+		<tbody>
+			{% for dia in dias %}
+			<tr{% if dia.eh_descanso %} class="dia-descanso"{% endif %}>
+				<td class="col-dia-numero">{{ dia.dia_numero }}</td>
+				<td class="col-dia-semana">{{ dia.dia_semana }}</td>
+				<td class="col-horario">{{ dia.entrada }}</td>
+				<td class="col-horario">{{ dia.intervalo_inicio }}</td>
+				<td class="col-horario">{{ dia.intervalo_fim }}</td>
+				<td class="col-horario">{{ dia.termino }}</td>
+				<td class="col-observacoes">{{ dia.observacoes }}</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+</body>
+
+</html>
