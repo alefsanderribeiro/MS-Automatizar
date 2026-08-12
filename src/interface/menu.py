@@ -154,7 +154,7 @@ def _exibir_apresentacao() -> None:
 [bold cyan]GitHub:[/bold cyan] {__github__}
 
 [dim]Seja Bem-vindo ao Automatiza MS!
-Este programa automatiza processos manuais da empresa Moraes e Santos.
+Este programa automatiza processos manuais para a empresa cliente.
 Você pode fazer várias operações com Folhas de Pontos ou Holerites dos seus funcionários.[/dim]
 """
     exibir_painel(info, titulo="MS-Automatizar", estilo_borda="cyan")
@@ -299,7 +299,7 @@ def Apresentação() -> str:
     GitHub: {__github__}
     {"".center(50, "—")}
     Seja Bem-vindo ao Automatiza MS!
-    Este programa automatiza processos manuais da empresa Moraes e Santos.
+    Este programa automatiza processos manuais para a empresa cliente.
     Você pode fazer várias operações com Folhas de Pontos ou Holerites dos seus funcionários.
     Você pode usar o comando --help ou -h para ver todas as opções disponíveis.
     Caso não escolha nenhuma opção na inicialização, o programa será iniciado em modo interativo.

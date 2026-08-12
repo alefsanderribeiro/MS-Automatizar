@@ -271,7 +271,7 @@ ENVIO_RETRY_DELAY_SECONDS=5
 
 ### 4. Preparar Planilha de Contatos
 
-Crie a planilha `src/data/models/Planilha de Contatos - Folha de Ponto.xlsx` com as colunas:
+Crie a planilha de contatos (Excel) com as colunas abaixo (o caminho padrão é configurado via `planilha_contatos_service`; você pode informar o caminho em tempo de execução se preferir):
 
 | Coluna | Descricao |
 |--------|-----------|

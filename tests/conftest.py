@@ -223,18 +223,18 @@ def empresa_dict(sample_object_id) -> Dict[str, Any]:
         Complete empresa dictionary
     """
     return {
-        "nome": "Moraes & Santos Consultoria",
+        "nome": "Solucoes Dinamicas Consultoria",
         "cnpj": "12.345.678/0001-90",
         "atividade": "Consultoria em TI",
         "endereco": "Rua A, 123 - São Paulo, SP",
         "telefone": "(11) 9999-9999",
-        "email": "contato@moraes.com.br",
-        "responsavel": "João Moraes",
+        "email": "contato@solucoesdinamicas.com.br",
+        "responsavel": "João Pereira",
         "status": "ativa",
         "incompleto": False,
-        "nome_normalizado": "moraes & santos consultoria",
+        "nome_normalizado": "solucoes dinamicas consultoria",
         "nome_sigla": "M&S",
-        "nome_simplificado": "Moraes Santos",
+        "nome_simplificado": "Solucoes Dinamicas",
         "criado_em": datetime.now(timezone.utc),
         "atualizado_em": datetime.now(timezone.utc),
         "versao": 1,

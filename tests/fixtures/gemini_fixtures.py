@@ -69,7 +69,7 @@ def gemini_holerite_response():
             "lotacao": "TI"
         },
         "empresa": {
-            "nome": "MORAES & SANTOS CONSULTORIA LTDA",
+            "nome": "SOLUCOES DINAMICAS CONSULTORIA LTDA",
             "cnpj": "12.345.678/0001-90"
         },
         "periodo": {

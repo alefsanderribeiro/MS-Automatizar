@@ -242,7 +242,7 @@ class EmpresaService(HistoricoMixin):
     def buscar_por_nome_ou_simplificado(self, nome_empresa: str, exato: bool = False) -> Optional[Dict[str, Any]]:
         """
         Busca uma empresa primeiro pelo nome_simplificado, com fallback para nome completo.
-        Estratégia para envio multidevice: tenta nome simplificado (ex: "Moraes") antes do nome completo.
+        Estratégia para envio multidevice: tenta nome simplificado (ex: "Solucoes") antes do nome completo.
 
         Args:
             nome_empresa: Nome ou parte do nome da empresa

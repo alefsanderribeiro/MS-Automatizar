@@ -47,7 +47,7 @@ def test_funcionario_dict(funcionario_dict):
 
 def test_empresa_dict(empresa_dict):
     """Test empresa_dict fixture."""
-    assert empresa_dict["nome"] == "Moraes & Santos Consultoria"
+    assert empresa_dict["nome"] == "Solucoes Dinamicas Consultoria"
     assert empresa_dict["status"] == "ativa"
     assert empresa_dict["incompleto"] is False
 
@@ -132,7 +132,7 @@ def test_funcionario_incompleto(funcionario_incompleto):
 
 def test_empresa_completa(empresa_completa):
     """Test complete empresa fixture."""
-    assert empresa_completa.nome == "Moraes & Santos Consultoria"
+    assert empresa_completa.nome == "Solucoes Dinamicas Consultoria"
     assert empresa_completa.status == "ativa"
     assert empresa_completa.incompleto is False
 

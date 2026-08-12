@@ -10,9 +10,9 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 ### Adicionado
 
 #### 🐳 Infraestrutura Docker unificada
-- **docker-compose unificado** (`docker-compose.ms-automatizar.yml`): MongoDB 8.0 + Redis 7.2 + WhatsApp API em um único compose.
-- **Backup/restauração MongoDB documentada** (`backup_mongo/`): procedimento de backup completo do banco `MS_Automatizar` e restore validado **6.466 documentos**.
-- **Docs novas**: `INFRAESTRUTURA.md` (visão geral de deploy/containers) e `UPGRADE_GOWA_9.md` (guia de migração do WhatsApp API v8→v9).
+- **docker-compose unificado**: MongoDB 8.0 + Redis 7.2 + WhatsApp API em um único compose.
+- **Backup/restauração MongoDB documentada**: procedimento de backup completo do banco `MS_Automatizar`; restore validado.
+- **Docs novas**: guia de infraestrutura (deploy/containers) e guia de migração do WhatsApp API v8→v9.
 
 #### 🔄 WhatsApp API — upgrade para GOWA v9.0.0
 - **Imagem** `aldinokemal2104/go-whatsapp-web-multidevice` pinada em `:v9.0.0` no `docker-compose.ms-automatizar.yml`.
@@ -119,7 +119,7 @@ Todos os 9 modulos de interface foram migrados do padrao antigo (`print()` + `in
 - **`interface_configuracoes.py`**: Configuracoes de MongoDB, APIs, sistema e Zoho Mail
 
 #### 📝 Templates de Mensagem
-- **Removida assinatura fixa** "Moraes e Santos" dos templates padrao de email (folha de ponto e holerite)
+- **Removida assinatura fixa** "a empresa cliente" dos templates padrao de email (folha de ponto e holerite)
 - Corpo do template agora termina em "Atenciosamente," sem nome fixo da empresa
 
 #### 🏗️ Estrutura do Menu

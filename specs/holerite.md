@@ -2,7 +2,7 @@
 
 ## 1. Visao Geral
 
-O dominio Holerite automatiza o processamento e envio de recibos de pagamento (holerites) em PDF para funcionarios da empresa Moraes & Santos.
+O dominio Holerite automatiza o processamento e envio de recibos de pagamento (holerites) em PDF para funcionarios da empresa Solucoes Dinamicas.
 
 Duas grandes responsabilidades:
 
@@ -152,8 +152,8 @@ MODO MONGODB:
 ```python
 class HoleriteExtracaoSchema(BaseModel):
     # EMPRESA (dados brutos do documento)
-    empresa_razao_social: str              # "MORAES & SANTOS SERVICOS LTDA"
-    empresa_cnpj: str                      # "13.912.590/0001-70"
+    empresa_razao_social: str              # "SOLUCOES DINAMICAS SERVICOS LTDA"
+    empresa_cnpj: str                      # "00.000.000/0000-00"
     empresa_codigo_cc: Optional[str]       # Centro de Custo
     
     # FUNCIONARIO (dados brutos do documento)

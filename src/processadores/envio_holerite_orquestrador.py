@@ -294,7 +294,7 @@ class EnvioHoleriteOrquestrador:
 Segue anexo do(s) recibo(s) de pagamento referente ao mês de {contexto.get('mes_extenso', '')}/{ano}.
 
 Atenciosamente,
-Moraes e Santos"""
+a empresa cliente"""
             }
         
         # Enviar

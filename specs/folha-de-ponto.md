@@ -2,7 +2,7 @@
 
 ## 1. Visao Geral
 
-O dominio Folha de Ponto (Timesheet) e o modulo central do MS-Automatizar responsavel por automatizar o ciclo completo de gestao de ponto dos funcionarios da empresa Moraes & Santos.
+O dominio Folha de Ponto (Timesheet) e o modulo central do MS-Automatizar responsavel por automatizar o ciclo completo de gestao de ponto dos funcionarios da empresa Solucoes Dinamicas.
 
 ### Ciclo completo
 

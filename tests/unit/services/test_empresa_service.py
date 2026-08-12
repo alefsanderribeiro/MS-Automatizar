@@ -113,18 +113,18 @@ def empresa_dict(sample_object_id) -> Dict[str, Any]:
     """Sample empresa data from conftest.py."""
     return {
         "_id": sample_object_id,
-        "nome": "Moraes & Santos Consultoria",
+        "nome": "Solucoes Dinamicas Consultoria",
         "cnpj": "12345678000190",
         "atividade": "Consultoria em TI",
         "endereco": "Rua A, 123 - São Paulo, SP",
         "telefone": "(11) 9999-9999",
-        "email": "contato@moraes.com.br",
-        "responsavel": "João Moraes",
+        "email": "contato@solucoesdinamicas.com.br",
+        "responsavel": "João Pereira",
         "status": "ativa",
         "incompleto": False,
-        "nome_normalizado": "moraes & santos consultoria",
+        "nome_normalizado": "solucoes dinamicas consultoria",
         "nome_sigla": "M&S",
-        "nome_simplificado": "Moraes Santos",
+        "nome_simplificado": "Solucoes Dinamicas",
         "criado_em": datetime.now(timezone.utc),
         "atualizado_em": datetime.now(timezone.utc),
         "versao": 1,
@@ -328,13 +328,13 @@ class TestBuscaEmpresa:
 
         service.colecao.find_one.return_value = empresa_dict
 
-        result = service.buscar_por_nome("Moraes & Santos Consultoria", exato=True)
+        result = service.buscar_por_nome("Solucoes Dinamicas Consultoria", exato=True)
 
         assert result == empresa_dict
         # Verify normalized search used
         call_args = service.colecao.find_one.call_args[0][0]
         assert "nome_normalizado" in call_args
-        assert call_args["nome_normalizado"] == "moraes & santos consultoria"
+        assert call_args["nome_normalizado"] == "solucoes dinamicas consultoria"
 
     def test_buscar_por_nome_normalizado_partial(self, empresa_service_with_mock, empresa_dict):
         """Testa busca parcial por nome normalizado (regex)."""
@@ -342,7 +342,7 @@ class TestBuscaEmpresa:
 
         service.colecao.find_one.return_value = empresa_dict
 
-        result = service.buscar_por_nome("Moraes", exato=False)
+        result = service.buscar_por_nome("Solucoes", exato=False)
 
         assert result == empresa_dict
         # Verify regex search used
@@ -370,7 +370,7 @@ class TestBuscaEmpresa:
         # ----------------------
 
         # 2. Executamos a ação
-        result = service.buscar_todas_por_nome("Moraes")
+        result = service.buscar_todas_por_nome("Solucoes")
 
         # 3. Asserts
         assert len(result) == 2
@@ -379,7 +379,7 @@ class TestBuscaEmpresa:
         
         # Dica: Verifique se os argumentos do find foram os que você esperava
         args, kwargs = service.colecao.find.call_args
-        assert "moraes" in args[0]['nome_normalizado']['$regex']
+        assert "solucoes" in args[0]['nome_normalizado']['$regex']
 
     def test_buscar_por_cnpj(self, empresa_service_with_mock, empresa_dict):
         """Testa busca por CNPJ."""
@@ -405,7 +405,7 @@ class TestAutoCadastroEmpresa:
         # Mock find returns existing empresa
         service.colecao.find_one.return_value = empresa_dict
 
-        result = service.obter_ou_criar_incompleta("Moraes & Santos Consultoria")
+        result = service.obter_ou_criar_incompleta("Solucoes Dinamicas Consultoria")
 
         assert result == empresa_dict
         # Verify insert NOT called
@@ -457,7 +457,7 @@ class TestAutoCadastroEmpresa:
     def test_obter_ou_criar_incompleta_duplicata_retry(self, empresa_service_with_mock, empresa_dict):
         """Testa retry após erro de duplicata E11000."""
         service = empresa_service_with_mock
-        nome_empresa = "Moraes & Santos Consultoria"
+        nome_empresa = "Solucoes Dinamicas Consultoria"
 
         # First call: not found
         # Second call after insert error: found
@@ -565,7 +565,7 @@ class TestCRUDOperacoes:
         # Mock existing empresa
         service.colecao.find_one.return_value = empresa_dict
 
-        dados = {"nome": "Moraes & Santos Consultoria"}
+        dados = {"nome": "Solucoes Dinamicas Consultoria"}
 
         result = service.criar_empresa(dados)
 

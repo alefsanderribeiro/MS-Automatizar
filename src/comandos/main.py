@@ -162,7 +162,7 @@ def handle_diretorios(args, parser):
 
 
 def start_command():
-    parser = argparse.ArgumentParser(description="Automatizar tarefas com Python na empresa Moraes e Santos")
+    parser = argparse.ArgumentParser(description="Automatizar tarefas com Python para a empresa cliente")
     subparsers = parser.add_subparsers(dest='command', help='Comandos principais')
     
     folha_de_ponto_subcommands(subparsers)

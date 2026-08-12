@@ -332,7 +332,7 @@ def exemplo_uso():
     
     func_doc, erros = ConstrutorFuncionarioIncompleto.criar_do_pdf(
         nome_pdf="Folha de Ponto - JOÃO SILVA.pdf",
-        empresa_extraida="MORAES & SANTOS†SERVIÇOS",
+        empresa_extraida="SOLUCOES DINAMICAS†SERVIÇOS",
         funcionario_nome_extraido="JOÃO†DA·SILVA",
         funcionario_funcao="ANALISTA†DE†SISTEMAS",
         mes_ano="2025-11"

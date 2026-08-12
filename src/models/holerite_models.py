@@ -105,11 +105,11 @@ class HoleriteExtracaoSchema(BaseModel):
     # === EMPRESA (dados brutos do documento) ===
     empresa_razao_social: str = Field(
         ..., 
-        description="Razão social da empresa (ex: 'MORAES & SANTOS SERVIÇOS LTDA')"
+        description="Razão social da empresa (ex: 'SOLUCOES DINAMICAS SERVIÇOS LTDA')"
     )
     empresa_cnpj: str = Field(
         ..., 
-        description="CNPJ da empresa (ex: '13.912.590/0001-70')"
+        description="CNPJ da empresa (ex: '00.000.000/0000-00')"
     )
     empresa_codigo_cc: Optional[str] = Field(
         None, 
@@ -487,8 +487,8 @@ if __name__ == "__main__":
     
     # Schema que o Gemini preencheria
     extracao = HoleriteExtracaoSchema(
-        empresa_razao_social="MORAES & SANTOS SERVIÇOS LTDA",
-        empresa_cnpj="13.912.590/0001-70",
+        empresa_razao_social="SOLUCOES DINAMICAS SERVIÇOS LTDA",
+        empresa_cnpj="00.000.000/0000-00",
         empresa_codigo_cc="ADMINISTRATIVO",
         funcionario_codigo=1439,
         funcionario_nome="VALDILENE BASTOS LIMA",

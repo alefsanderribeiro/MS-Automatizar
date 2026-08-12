@@ -426,7 +426,7 @@ if __name__ == "__main__":
             horario="08:00-17:00"
         )
         .set_empresa(
-            razao_social="Moraes & Santos",
+            razao_social="Solucoes Dinamicas",
             cnpj="12.345.678/0001-90",
             atividade="Consultoria",
             endereco="Rua A, 123"

@@ -238,11 +238,11 @@ class EmpresaMongoDB(BaseModel):
             Dict[str, str]: Dicionário com chaves EMPRESA, ATIVIDADE, ENDEREÇO, CNPJ
 
         Examples:
-            >>> empresa.nome = "Moraes & Santos"
+            >>> empresa.nome = "Solucoes Dinamicas"
             >>> empresa.atividade = "Consultoria"
             >>> empresa.obter_dados_folha_ponto()
             {
-                'EMPRESA': 'Moraes & Santos',
+                'EMPRESA': 'Solucoes Dinamicas',
                 'ATIVIDADE': 'Consultoria',
                 'ENDEREÇO': 'Rua A, 123',
                 'CNPJ': '12.345.678/0001-90'
@@ -379,12 +379,12 @@ if __name__ == "__main__":
     print("=" * 50)
 
     empresa_completa = (EmpresaBuilder()
-        .set_nome("Moraes & Santos Consultoria")
+        .set_nome("Solucoes Dinamicas Consultoria")
         .set_cnpj("12.345.678/0001-90")
         .set_atividade("Consultoria em TI")
         .set_endereco("Rua A, 123 - São Paulo, SP")
-        .set_contato("(11) 9999-9999", "contato@moraes.com.br")
-        .set_responsavel("João Moraes")
+        .set_contato("(11) 9999-9999", "contato@solucoesdinamicas.com.br")
+        .set_responsavel("João Pereira")
         .set_status(StatusEmpresa.ATIVA)
         .build()
     )

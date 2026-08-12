@@ -528,7 +528,7 @@ class TestBuscarPorEmpresa:
         cursor = create_mock_cursor(docs)
         mock_colecao.find.return_value = cursor
 
-        result = folha_service_mock.buscar_por_empresa(empresa="Moraes & Santos")
+        result = folha_service_mock.buscar_por_empresa(empresa="Solucoes Dinamicas")
 
         assert len(result) == 2
 
