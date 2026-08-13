@@ -141,3 +141,19 @@ class TestConversoesDatetimeMongo:
         assert resultado.hour == 23 and resultado.minute == 59 and resultado.second == 59
         assert resultado.date() == date(2026, 8, 15)
 
+
+# ==================== date_type (CLI reaproveita parse_data_flexivel) ====================
+
+class TestDateTypeCLI:
+    def test_date_type_aceita_dd_mm_yyyy(self):
+        from src.utils.type import date_type
+        assert date_type("15/08/2026") == date(2026, 8, 15)
+
+    def test_date_type_aceita_iso(self):
+        from src.utils.type import date_type
+        assert date_type("2026-08-15") == date(2026, 8, 15)
+
+    def test_date_type_recusa_invalido(self):
+        from src.utils.type import date_type
+        with pytest.raises(ValueError):
+            date_type("invalido")

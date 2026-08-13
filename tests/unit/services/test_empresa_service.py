@@ -507,8 +507,12 @@ class TestCacheInvalidacao:
         # Verify Redis invalidate called
         service.cache.invalidate.assert_called_once_with("empresas:*")
 
-    def test_invalidar_cache_reloads_after_clearing(self, empresa_service_with_mock):
-        """Testa que cache é recarregado após invalidação."""
+    def test_invalidar_cache_nao_recarrega_colecao(self, empresa_service_with_mock):
+        """Testa que invalidação em massa NÃO recarrega a coleção inteira do Mongo.
+
+        A otimização removeu o full-reload imediato: a próxima leitura usa
+        cache-aside e repopula sob demanda. Isso evita o full-scan duplicado.
+        """
         service = empresa_service_with_mock
 
         service.cache.invalidate.return_value = 0
@@ -516,8 +520,26 @@ class TestCacheInvalidacao:
         with patch.object(service, '_carregar_cache_completo') as mock_reload:
             service._invalidar_cache()
 
-            # Verify reload called
-            mock_reload.assert_called_once()
+            # Sem recarga imediata da coleção
+            mock_reload.assert_not_called()
+
+    def test_invalidar_cache_direcionada_por_id(self, empresa_service_with_mock):
+        """Testa que invalidação direcionada apaga só a chave do registro."""
+        service = empresa_service_with_mock
+        empresa_id = str(ObjectId())
+
+        # Popular cache local
+        service._cache_empresas[empresa_id] = {"_id": empresa_id, "nome": "X"}
+
+        with patch.object(service, '_carregar_cache_completo') as mock_reload:
+            service._invalidar_cache(registro_id=empresa_id)
+
+        # Chave específica invalidada (não o prefixo todo)
+        service.cache.invalidate.assert_called_once_with(f"empresas:{empresa_id}")
+        # Cache local do registro limpo
+        assert empresa_id not in service._cache_empresas
+        # Sem full-reload
+        mock_reload.assert_not_called()
 
     def test_atualizar_invalida_cache(self, empresa_service_with_mock):
         """Testa que atualização invalida cache."""

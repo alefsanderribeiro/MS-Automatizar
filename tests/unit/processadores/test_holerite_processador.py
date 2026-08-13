@@ -17,17 +17,10 @@ Tests cover:
 
 Target: 50%+ coverage (~211 lines of 426)
 
-KNOWN CODE BUGS (tests skipped for affected functionality):
-- Line 239: Attempts to access `extracao.competencia` attribute that doesn't exist in HoleriteExtracaoSchema
-  Should use formatted string from mes_referencia_texto or format mes_referencia/ano_referencia
-- Line 260: Attempts to access `extracao.funcionario_documento` attribute that doesn't exist
-  Should use `extracao.funcionario_cpf`
-- Lines 266-267: Attempts to access `funcionario_telefone` and `funcionario_email` that don't exist in model
-- Line 287: Uses `extracao.empresa_nome` but model has `empresa_razao_social`
-- Line 297-302: HoleriteMongoDB.from_extracao() expects ArquivoHolerite and ProcessamentoHolerite objects
-  but code calls it with caminho_arquivo (str) and hash_arquivo (str)
-
-These bugs prevent full pipeline execution. Tests validate working components and document expected behavior.
+Nota: os "KNOWN CODE BUGS" abaixo foram corrigidos no código atual
+(processador usa `funcionario_cpf`, `empresa_razao_social`, `mes_referencia`/`ano_referencia`
+e `HoleriteMongoDB.from_extracao` com objetos ArquivoHolerite/ProcessamentoHolerite).
+Os testes antes pulados por esses bugs foram reativados e adaptados ao comportamento atual.
 """
 
 import pytest
@@ -545,19 +538,15 @@ class TestProcessarArquivoLookup:
 
         return processador
 
-    @pytest.mark.skip(reason="Code bug: line 260 expects funcionario_documento, but model has funcionario_cpf")
     def test_processar_arquivo_busca_funcionario_por_cpf(
         self, processador_com_extracao_ok, temp_pdf_file
     ):
-        """Test funcionario lookup by CPF.
-
-        SKIPPED: Code has bug at line 260 - expects funcionario_documento attribute.
-        """
+        """Test funcionario lookup by CPF."""
         func_id = ObjectId()
         processador_com_extracao_ok.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': func_id, 'status_cadastro': 'completo'}
         )
-        processador_com_extracao_ok.empresa_service.buscar_por_nome = MagicMock(return_value=None)
+        processador_com_extracao_ok.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(return_value=None)
         processador_com_extracao_ok.holerite_service.criar_holerite = MagicMock(return_value=ObjectId())
         processador_com_extracao_ok.contato_service.criar_ou_atualizar = MagicMock()
 
@@ -566,19 +555,15 @@ class TestProcessarArquivoLookup:
         processador_com_extracao_ok.funcionario_service.criar_ou_buscar_por_documento.assert_called_once()
         assert resultado.funcionario_id == str(func_id)
 
-    @pytest.mark.skip(reason="Code bug: line 260 expects funcionario_documento, but model has funcionario_cpf")
     def test_processar_arquivo_cria_novo_funcionario(
         self, processador_com_extracao_ok, temp_pdf_file
     ):
-        """Test funcionario autocreate when not found.
-
-        SKIPPED: Code has bug at line 260 - expects funcionario_documento attribute.
-        """
+        """Test funcionario autocreate when not found."""
         func_id = ObjectId()
         processador_com_extracao_ok.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': func_id, 'status_cadastro': 'incompleto'}  # Newly created
         )
-        processador_com_extracao_ok.empresa_service.buscar_por_nome = MagicMock(return_value=None)
+        processador_com_extracao_ok.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(return_value=None)
         processador_com_extracao_ok.holerite_service.criar_holerite = MagicMock(return_value=ObjectId())
         processador_com_extracao_ok.contato_service.criar_ou_atualizar = MagicMock()
 
@@ -587,26 +572,21 @@ class TestProcessarArquivoLookup:
         assert resultado.funcionario_criado is True
         assert "Novo funcionário criado" in str(resultado.mensagens)
 
-    @pytest.mark.skip(reason="Code bug: line 239 expects extracao.competencia which doesn't exist")
-    def test_processar_arquivo_sem_cpf_nao_vincula_funcionario(self, mocker):
-        """Test holerite without CPF is not linked to funcionario.
+    def test_processar_arquivo_sem_cpf_busca_por_nome(
+        self, processador_com_extracao_ok, temp_pdf_file
+    ):
+        """Test holerite without CPF still attempts lookup by normalized name.
 
-        SKIPPED: Code fails before reaching CPF check due to missing competencia attribute.
+        Comportamento atual: mesmo sem CPF, se houver nome do funcionário o
+        processador chama criar_ou_buscar_por_documento com documento vazio.
         """
-        mock_gemini = MagicMock()
-        mock_holerite_service = MagicMock()
-        mock_holerite_service.disponivel = True
-        mock_holerite_service.buscar_por_hash = MagicMock(return_value=None)
-        mock_funcionario_service = MagicMock()
-        mock_funcionario_service.disponivel = True
-
-        processador = HoleriteProcessador(
-            gemini_service=mock_gemini,
-            holerite_service=mock_holerite_service,
-            funcionario_service=mock_funcionario_service,
-            contato_service=MagicMock(),
-            empresa_service=MagicMock(),
+        func_id = ObjectId()
+        processador_com_extracao_ok.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
+            return_value={'_id': func_id, 'status_cadastro': 'completo'}
         )
+        processador_com_extracao_ok.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(return_value=None)
+        processador_com_extracao_ok.holerite_service.criar_holerite = MagicMock(return_value=ObjectId())
+        processador_com_extracao_ok.contato_service.criar_ou_atualizar = MagicMock()
 
         # Extraction without CPF
         extracao_json = json.dumps({
@@ -624,27 +604,24 @@ class TestProcessarArquivoLookup:
             "total_descontos": 400.00,
             "valor_liquido": 4600.00
         })
-        mock_gemini.documento_estruturado.return_value = extracao_json
-        processador.holerite_service.criar_holerite = MagicMock(return_value=ObjectId())
+        processador_com_extracao_ok.gemini.documento_estruturado.return_value = extracao_json
 
-        resultado = processador.processar_arquivo(Path("test.pdf"))
+        resultado = processador_com_extracao_ok.processar_arquivo(temp_pdf_file)
 
-        assert resultado.funcionario_id is None
-        assert any("sem CPF" in msg for msg in resultado.mensagens)
+        # Sem CPF, a busca é feita pelo nome normalizado com documento vazio
+        processador_com_extracao_ok.funcionario_service.criar_ou_buscar_por_documento.assert_called_once()
+        assert processador_com_extracao_ok.funcionario_service.criar_ou_buscar_por_documento.call_args[1]['documento'] == ""
+        assert resultado.funcionario_id == str(func_id)
 
-    @pytest.mark.skip(reason="Code bug: line 239/260 have attribute errors preventing full pipeline")
     def test_processar_arquivo_busca_empresa_por_nome(
         self, processador_com_extracao_ok, temp_pdf_file
     ):
-        """Test empresa lookup by name.
-
-        SKIPPED: Code fails before reaching empresa lookup.
-        """
+        """Test empresa lookup by name."""
         empresa_id = ObjectId()
         processador_com_extracao_ok.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': ObjectId(), 'status_cadastro': 'completo'}
         )
-        processador_com_extracao_ok.empresa_service.buscar_por_nome = MagicMock(
+        processador_com_extracao_ok.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(
             return_value={'_id': empresa_id, 'nome': 'Empresa Teste'}
         )
         processador_com_extracao_ok.holerite_service.criar_holerite = MagicMock(return_value=ObjectId())
@@ -652,17 +629,13 @@ class TestProcessarArquivoLookup:
 
         resultado = processador_com_extracao_ok.processar_arquivo(temp_pdf_file)
 
-        processador_com_extracao_ok.empresa_service.buscar_por_nome.assert_called_once()
+        processador_com_extracao_ok.empresa_service.buscar_por_nome_ou_simplificado.assert_called_once()
         assert resultado.empresa_id == str(empresa_id)
 
-    @pytest.mark.skip(reason="Code bug: line 239/260 have attribute errors preventing full pipeline")
     def test_processar_arquivo_usa_empresa_id_fornecido(
         self, processador_com_extracao_ok, temp_pdf_file
     ):
-        """Test that provided empresa_id is used instead of lookup.
-
-        SKIPPED: Code fails before reaching empresa lookup.
-        """
+        """Test that provided empresa_id is used instead of lookup."""
         empresa_id = str(ObjectId())
         processador_com_extracao_ok.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': ObjectId(), 'status_cadastro': 'completo'}
@@ -672,8 +645,8 @@ class TestProcessarArquivoLookup:
 
         resultado = processador_com_extracao_ok.processar_arquivo(temp_pdf_file, empresa_id=empresa_id)
 
-        # Should not call buscar_por_nome
-        processador_com_extracao_ok.empresa_service.buscar_por_nome.assert_not_called()
+        # Should not call buscar_por_nome_ou_simplificado
+        processador_com_extracao_ok.empresa_service.buscar_por_nome_ou_simplificado.assert_not_called()
         assert resultado.empresa_id == empresa_id
 
 
@@ -721,19 +694,18 @@ class TestProcessarArquivoArmazenamento:
 
         return processador
 
-    @pytest.mark.skip(reason="Code bug: multiple attribute errors prevent reaching storage")
     def test_processar_arquivo_salva_holerite_no_mongodb(
         self, processador_completo_mock, temp_pdf_file
     ):
-        """Test that holerite is saved to MongoDB.
-
-        SKIPPED: Code fails before reaching MongoDB storage.
-        """
+        """Test that holerite is saved to MongoDB."""
         holerite_id = ObjectId()
         processador_completo_mock.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': ObjectId(), 'status_cadastro': 'completo'}
         )
-        processador_completo_mock.empresa_service.buscar_por_nome = MagicMock(return_value=None)
+        # Empresa válida para o pipeline completar até o armazenamento
+        processador_completo_mock.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(
+            return_value={'_id': ObjectId(), 'nome': 'Empresa Teste'}
+        )
         processador_completo_mock.holerite_service.criar_holerite = MagicMock(return_value=holerite_id)
         processador_completo_mock.contato_service.criar_ou_atualizar = MagicMock()
 
@@ -743,18 +715,16 @@ class TestProcessarArquivoArmazenamento:
         assert resultado.holerite_id == str(holerite_id)
         assert resultado.sucesso is True
 
-    @pytest.mark.skip(reason="Code bug: fails before reaching storage logic")
     def test_processar_arquivo_falha_salvar_retorna_erro(
         self, processador_completo_mock, temp_pdf_file
     ):
-        """Test error handling when MongoDB save fails.
-
-        SKIPPED: Code fails before reaching save logic.
-        """
+        """Test error handling when MongoDB save fails."""
         processador_completo_mock.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': ObjectId(), 'status_cadastro': 'completo'}
         )
-        processador_completo_mock.empresa_service.buscar_por_nome = MagicMock(return_value=None)
+        processador_completo_mock.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(
+            return_value={'_id': ObjectId(), 'nome': 'Empresa Teste'}
+        )
         processador_completo_mock.holerite_service.criar_holerite = MagicMock(return_value=None)  # Save fails
 
         resultado = processador_completo_mock.processar_arquivo(temp_pdf_file)
@@ -762,19 +732,17 @@ class TestProcessarArquivoArmazenamento:
         assert resultado.sucesso is False
         assert resultado.erro == "Falha ao salvar holerite no MongoDB"
 
-    @pytest.mark.skip(reason="Code bug: fails before reaching contact creation")
     def test_processar_arquivo_cria_contatos_funcionario(
         self, processador_completo_mock, temp_pdf_file, mocker
     ):
-        """Test that funcionario contacts are created/updated.
-
-        SKIPPED: Code fails before reaching contact creation logic.
-        """
+        """Test that funcionario contacts are created/updated."""
         func_id = ObjectId()
         processador_completo_mock.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': func_id, 'status_cadastro': 'completo'}
         )
-        processador_completo_mock.empresa_service.buscar_por_nome = MagicMock(return_value=None)
+        processador_completo_mock.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(
+            return_value={'_id': ObjectId(), 'nome': 'Empresa Teste'}
+        )
         processador_completo_mock.holerite_service.criar_holerite = MagicMock(return_value=ObjectId())
 
         # Mock criar_contato_de_holerite
@@ -789,18 +757,16 @@ class TestProcessarArquivoArmazenamento:
         assert processador_completo_mock.contato_service.criar_ou_atualizar.call_count == 2
         assert "2 contato(s) criado(s)" in str(resultado.mensagens)
 
-    @pytest.mark.skip(reason="Code bug: prevents successful completion for stats update")
     def test_processar_arquivo_atualiza_estatisticas_sucesso(
         self, processador_completo_mock, temp_pdf_file
     ):
-        """Test that statistics are updated on success.
-
-        SKIPPED: Code fails before reaching stats update.
-        """
+        """Test that statistics are updated on success."""
         processador_completo_mock.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': ObjectId(), 'status_cadastro': 'completo'}
         )
-        processador_completo_mock.empresa_service.buscar_por_nome = MagicMock(return_value=None)
+        processador_completo_mock.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(
+            return_value={'_id': ObjectId(), 'nome': 'Empresa Teste'}
+        )
         processador_completo_mock.holerite_service.criar_holerite = MagicMock(return_value=ObjectId())
         processador_completo_mock.contato_service.criar_ou_atualizar = MagicMock()
 
@@ -810,18 +776,16 @@ class TestProcessarArquivoArmazenamento:
         assert processador_completo_mock.total_sucesso == 1
         assert processador_completo_mock.total_falhas == 0
 
-    @pytest.mark.skip(reason="Code bug: fails before reaching DB storage attempt")
     def test_processar_arquivo_atualiza_estatisticas_falha(
         self, processador_completo_mock, temp_pdf_file
     ):
-        """Test that statistics are updated on failure.
-
-        SKIPPED: Code fails before reaching DB storage attempt.
-        """
+        """Test that statistics are updated on failure."""
         processador_completo_mock.funcionario_service.criar_ou_buscar_por_documento = MagicMock(
             return_value={'_id': ObjectId(), 'status_cadastro': 'completo'}
         )
-        processador_completo_mock.empresa_service.buscar_por_nome = MagicMock(return_value=None)
+        processador_completo_mock.empresa_service.buscar_por_nome_ou_simplificado = MagicMock(
+            return_value={'_id': ObjectId(), 'nome': 'Empresa Teste'}
+        )
         processador_completo_mock.holerite_service.criar_holerite = MagicMock(side_effect=Exception("DB Error"))
 
         processador_completo_mock.processar_arquivo(temp_pdf_file)
