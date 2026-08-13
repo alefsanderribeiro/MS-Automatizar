@@ -1,4 +1,4 @@
-from datetime import datetime
+from src.utils.data_utils import parse_data_flexivel
 
 
 def bool_type(string):
@@ -19,7 +19,19 @@ def bool_type(string):
 
 
 def date_type(string):
-    return datetime.strptime(string, '%Y-%m-%d').date()
+    """Interpreta um valor como data (uso em argparse).
+
+    Aceita tanto DD/MM/YYYY (padrão brasileiro, ex: 15/08/2026) quanto
+    YYYY-MM-DD (ISO, ex: 2026-08-15) para não quebrar scripts existentes.
+    Retorna um objeto `date`.
+    """
+    valor = parse_data_flexivel(string, retornar_date=True)
+    if valor is None:
+        raise ValueError(
+            f"Data inválida: {string!r}. Use DD/MM/YYYY (ex: 15/08/2026) "
+            "ou YYYY-MM-DD (ex: 2026-08-15)."
+        )
+    return valor
 
 def list_type(string):
     if "," in string:

@@ -34,6 +34,29 @@ from src.interface.core.theme import console, ESTILO_QUESTIONARY, ICONES, LAYOUT
 
 
 # ═══════════════════════════════════════════════════════════════
+# CONTROLE DE PAUSA ÚNICA
+# ═══════════════════════════════════════════════════════════════
+# O MenuBuilder.executar() chama pausar() após cada ação por padrão
+# (_pausar_apos_acao=True). Porém, a maioria das ações também chama
+# pausar() internamente, o que gerava DOIS "Pressione ENTER" seguidos
+# (BUG 1). Além disso, ao retornar de um submenu o menu pai pausava de
+# forma desnecessária (BUG 2 - ENTER fantasma).
+#
+# Para garantir pausa ÚNICA por ação, o módulo rastreia:
+#   _pausou_na_acao      -> True se pausar() foi invocado DURANTE a ação.
+#   _profundidade_menu   -> profundidade de aninhamento de menus.
+#   _submenus_executados -> contador de menus aninhados executados (usado
+#                           para detectar que a ação abriu um submenu e,
+#                           portanto, já redesenhou a tela).
+#
+# Assim o MenuBuilder só pausa quando a ação NÃO pausou e NÃO abriu outro
+# menu, mantendo EXATAMENTE uma pausa e nenhuma redundância.
+_pausou_na_acao = False
+_profundidade_menu = 0
+_submenus_executados = 0
+
+
+# ═══════════════════════════════════════════════════════════════
 # CLASSES DE MENU
 # ═══════════════════════════════════════════════════════════════
 
@@ -192,42 +215,71 @@ class MenuBuilder:
 
     def executar(self) -> None:
         """Executa o loop do menu."""
-        while True:
-            # Limpa tela e exibe cabeçalho
-            if self.mostrar_cabecalho:
-                limpar_tela()
-                exibir_cabecalho(self.titulo, self.icone)
+        global _profundidade_menu, _submenus_executados, _pausou_na_acao
 
-            # Monta choices para questionary
-            choices = self._montar_choices()
+        # Registra aninhamento: se já estamos dentro de outro menu, esta
+        # execução é um submenu (o contador é usado para o menu pai saber
+        # que a ação abriu outro menu e não precisa pausar ao voltar).
+        _profundidade_menu += 1
+        if _profundidade_menu > 1:
+            _submenus_executados += 1
 
-            # Exibe menu
-            try:
-                escolha = questionary.select(
-                    "Escolha uma opção:",
-                    choices=choices,
-                    style=ESTILO_QUESTIONARY,
-                    instruction=self.instrucao,
-                    qmark="",
-                ).ask()
-            except KeyboardInterrupt:
-                # Ctrl+C = voltar
-                break
+        try:
+            while True:
+                # Limpa tela e exibe cabeçalho (ANTES do questionary, nunca
+                # no meio de um fluxo questionary ativo - BUG 4).
+                if self.mostrar_cabecalho:
+                    limpar_tela()
+                    exibir_cabecalho(self.titulo, self.icone)
 
-            # None ou string (voltar/separador) = sair do menu
-            if escolha is None or not isinstance(escolha, OpcaoMenu):
-                break
+                # Monta choices para questionary
+                choices = self._montar_choices()
 
-            # Executa ação
-            try:
-                escolha.acao()
-            except KeyboardInterrupt:
-                exibir_aviso("Operação cancelada pelo usuário.")
-            except Exception as e:
-                exibir_erro(f"Erro ao executar: {e}")
+                # Exibe menu
+                try:
+                    escolha = questionary.select(
+                        "Escolha uma opção:",
+                        choices=choices,
+                        style=ESTILO_QUESTIONARY,
+                        instruction=self.instrucao,
+                        qmark="",
+                    ).ask()
+                except KeyboardInterrupt:
+                    # Ctrl+C = voltar
+                    break
 
-            if self._pausar_apos_acao:
-                pausar()
+                # None ou string (voltar/separador) = sair do menu
+                if escolha is None or not isinstance(escolha, OpcaoMenu):
+                    break
+
+                # Executa ação (reinicia rastreio para isolar esta ação das
+                # anteriores - BUG 1/BUG 2/BUG 4).
+                _pausou_na_acao = False
+                _submenus_antes = _submenus_executados
+                try:
+                    escolha.acao()
+                except KeyboardInterrupt:
+                    exibir_aviso("Operação cancelada pelo usuário.")
+                except Exception as e:
+                    exibir_erro(f"Erro ao executar: {e}")
+
+                # A ação abriu outro menu (submenu) que já redesenhou a tela?
+                _aninhou = _submenus_executados > _submenus_antes
+
+                # PAUSA ÚNICA (BUG 1): o MenuBuilder só pausa se a ação NÃO
+                # pausou internamente E NÃO abriu outro menu (BUG 2 - ENTER
+                # fantasma ao voltar de submenu).
+                if (
+                    self._pausar_apos_acao
+                    and not _aninhou
+                    and not _pausou_na_acao
+                ):
+                    try:
+                        pausar()
+                    except KeyboardInterrupt:
+                        pass
+        finally:
+            _profundidade_menu -= 1
 
     def _montar_choices(self) -> list:
         """Monta lista de choices para questionary."""
@@ -533,6 +585,10 @@ def pausar(mensagem: str = "Pressione ENTER para continuar...") -> None:
     Args:
         mensagem: Texto a exibir.
     """
+    global _pausou_na_acao
+    # Marca que a pausa foi realizada nesta ação, para que o
+    # MenuBuilder.executar() não pause de novo (BUG 1).
+    _pausou_na_acao = True
     console.print(f"\n[dim]{mensagem}[/dim]")
     try:
         input()

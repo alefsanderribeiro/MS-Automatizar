@@ -8,11 +8,12 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 import dotenv
 
+from src.services.cache_service import cache_service
+from src.services import cache_keys
 from src.utils.logger_config import logger
 from src.utils.dotenv_path import caminho_dotenv
 from src.services.mongodb_connection import MongoDBConnectionPool, retry_mongodb, medir_tempo
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
-from src.services.cache_service import cache_service
 
 try:
     from pymongo import ASCENDING
@@ -156,7 +157,7 @@ class EmpresaService(HistoricoMixin):
                 # Cache local
                 self._cache_empresas[empresa_id] = empresa
                 # Preparar para cache Redis
-                cache_data_redis[f"empresas:{empresa_id}"] = empresa
+                cache_data_redis[cache_keys.empresa_key(empresa_id)] = empresa
             
             # Poplar cache Redis em batch (uma operação)
             ttl = int(os.getenv("CACHE_TTL", "300"))  # 5 minutos padrão
@@ -167,27 +168,24 @@ class EmpresaService(HistoricoMixin):
         except Exception as e:
             logger.error(f"Erro ao carregar cache de empresas: {e}")
     
-    def _invalidar_cache(self) -> None:
+    def _invalidar_cache(self, registro_id=None) -> None:
         """
-        Invalida TODO o cache de empresas (memória + Redis).
-        
-        Deve ser chamado após operações de CREATE, UPDATE ou DELETE
-        para garantir que próximas leituras busquem dados atualizados.
-        
-        Após invalidação, próxima busca recarregará o cache automaticamente.
+        Invalida o cache de empresas (memória + Redis) de forma direcionada.
+
+        - ``registro_id`` informado: invalida apenas a chave do registro. A
+          próxima leitura usa cache-aside e repopula SEM recarregar a coleção.
+        - ``registro_id`` None (ex: criação): invalida o prefixo ``empresas:*``.
         """
         try:
-            # Limpar cache local
-            self._cache_empresas.clear()
-            
-            # Limpar cache Redis (todas as chaves empresas:*)
-            deleted_count = self.cache.invalidate("empresas:*")
-            
-            logger.debug(f"🗑️ Cache de empresas invalidado: {deleted_count} chaves removidas do Redis")
-            
-            # Recarregar cache imediatamente para próximas buscas
-            self._carregar_cache_completo()
-            
+            if registro_id is not None:
+                self._cache_empresas.pop(str(registro_id), None)
+                self.cache.invalidate(cache_keys.empresa_key(registro_id))
+            else:
+                # Limpar cache local
+                self._cache_empresas.clear()
+                # Limpar cache Redis (todas as chaves empresas:*)
+                deleted_count = self.cache.invalidate(cache_keys.empresas_prefix())
+                logger.debug(f"🗑️ Cache de empresas invalidado: {deleted_count} chaves removidas do Redis")
         except Exception as e:
             logger.error(f"Erro ao invalidar cache de empresas: {e}")
     
@@ -416,7 +414,7 @@ class EmpresaService(HistoricoMixin):
             return self._cache_empresas[empresa_id]
         
         # 2. Verificar cache Redis (rápido - O(1) remoto)
-        cache_key = f"empresas:{empresa_id}"
+        cache_key = cache_keys.empresa_key(empresa_id)
         empresa_redis = self.cache.get(cache_key)
         if empresa_redis:
             # Atualizar cache local
@@ -733,8 +731,8 @@ class EmpresaService(HistoricoMixin):
             
             if resultado.modified_count > 0:
                 logger.info(f"✓ CNPJ atualizado para empresa {empresa_id}: {cnpj_limpo}")
-                # Invalidar cache
-                self._invalidar_cache()
+                # Invalidação direcionada por ID
+                self._invalidar_cache(registro_id=empresa_id)
                 return True
             else:
                 logger.debug(f"CNPJ não foi modificado (já existia?): {empresa_id}")
@@ -797,8 +795,11 @@ class EmpresaService(HistoricoMixin):
             )
             
             if resultado.modified_count > 0:
-                # Invalidar cache completo (memória + Redis)
-                self._invalidar_cache()
+                # Invalidação direcionada por ID; renome limpa todo o prefixo (raro)
+                if "nome" in alteracoes:
+                    self._invalidar_cache()
+                else:
+                    self._invalidar_cache(registro_id=object_id)
                 
                 campos = ", ".join([k for k in alteracoes.keys() if k not in ['atualizado_em', 'nome_normalizado']])
                 logger.info(f"✓ Empresa atualizada: {object_id} - campos: {campos}")

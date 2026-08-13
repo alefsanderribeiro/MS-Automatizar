@@ -24,6 +24,15 @@ from src.utils.retry_utils import (
     obter_config_retry,
 )
 
+# Utilitários de data (formato DD/MM/YYYY) — conversão nas bordas
+from src.utils.data_utils import (
+    parse_data_flexivel,
+    formatar_data_br,
+    formatar_data_hora_br,
+    date_para_datetime_inicio,
+    date_para_datetime_fim,
+)
+
 __all__ = [
     # Logger
     "logger",
@@ -47,4 +56,11 @@ __all__ = [
     "retry_simples",
     "RetryContextManager",
     "obter_config_retry",
+
+    # Data (formato DD/MM/YYYY)
+    "parse_data_flexivel",
+    "formatar_data_br",
+    "formatar_data_hora_br",
+    "date_para_datetime_inicio",
+    "date_para_datetime_fim",
 ]

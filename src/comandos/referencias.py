@@ -67,7 +67,8 @@ def listar_contratos(apenas_ativos: bool = False, formato: str = "tabela") -> No
             if contrato.get('localidade'):
                 logger.info(f"  Local:      {contrato.get('localidade')}")
             if contrato.get('inicio_vigencia'):
-                logger.info(f"  Vigência:   {contrato.get('inicio_vigencia')} até {contrato.get('fim_vigencia')}")
+                from src.utils.data_utils import formatar_data_br
+                logger.info(f"  Vigência:   {formatar_data_br(contrato.get('inicio_vigencia'))} até {formatar_data_br(contrato.get('fim_vigencia'))}")
 
 
 def adicionar_contrato_interativo() -> None:

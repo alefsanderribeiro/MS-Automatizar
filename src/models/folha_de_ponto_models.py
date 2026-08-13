@@ -143,6 +143,10 @@ class FolhaDePontoData(BaseModel):
     # NOTA: Essas informações também estão no funcionário, mas duplicadas aqui para facilitar
     # renderização de relatórios e PDFs sem necessidade de fazer join
     nome_funcionario: Optional[str] = Field(default=None, description="Nome do funcionário")
+    nome_normalizado: Optional[str] = Field(
+        default=None,
+        description="Nome do funcionário normalizado (sem acentos, minúsculas) para busca insensível a acentos"
+    )
     cpf_funcionario: Optional[str] = Field(default=None, description="CPF do funcionário")
     cargo_funcionario: Optional[str] = Field(default=None, description="Cargo do funcionário")
     lotacao_funcionario: Optional[str] = Field(default=None, description="Lotação/departamento do funcionário")
@@ -242,6 +246,23 @@ class FolhaDePontoMongoDB(BaseModel):
     historico_alteracoes: List[Dict[str, Any]] = Field(
         default_factory=list,
         description="Lista de alterações realizadas no documento"
+    )
+    
+    # ==================== SOFT DELETE (EXCLUSÃO LÓGICA) ====================
+    # A folha NUNCA é removida fisicamente do banco. Quando excluída, apenas
+    # recebe excluida=True + data_exclusao + motivo, preservando o registro
+    # e o histórico de envios (trilha de auditoria).
+    excluida: bool = Field(
+        default=False,
+        description="Soft delete: True quando a folha foi marcada como excluída (nunca removida do banco)"
+    )
+    data_exclusao: Optional[datetime] = Field(
+        default=None,
+        description="Data/hora em que a folha foi marcada como excluída (soft delete)"
+    )
+    motivo_exclusao: Optional[str] = Field(
+        default=None,
+        description="Motivo da exclusão (soft delete), informado pelo usuário"
     )
     
     # ==================== VALIDADORES ====================

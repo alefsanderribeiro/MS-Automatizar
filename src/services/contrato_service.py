@@ -18,6 +18,7 @@ from src.utils.logger_config import logger
 from src.models.contrato_models import StatusContrato
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.cache_service import cache_service
+from src.services import cache_keys
 from src.services.mongodb_connection import MongoDBConnectionPool
 
 # Tentativa de importação do MongoDB
@@ -190,27 +191,28 @@ class ContratoService(HistoricoMixin):
         except Exception as e:
             logger.error(f"Erro ao carregar cache de contratos: {e}")
     
-    def _invalidar_cache(self) -> None:
+    def _invalidar_cache(self, registro_id=None) -> None:
         """
-        Invalida TODO o cache de contratos (memória + Redis).
-        
-        Deve ser chamado após operações de CREATE, UPDATE ou DELETE
-        para garantir que próximas leituras busquem dados atualizados.
-        
-        Após invalidação, próxima busca recarregará o cache automaticamente.
+        Invalida o cache de contratos (memória + Redis) de forma direcionada.
+
+        - ``registro_id`` informado: invalida apenas a chave do registro. A
+          próxima leitura usa cache-aside e repopula SEM recarregar a coleção
+          inteira.
+        - ``registro_id`` None (ex: criação): invalida o prefixo ``contratos:*``.
+
+        Obs: não há invalidação indexada por nome aqui — a busca por nome lê
+        direto do Mongo, portanto não há cache a invalidar.
         """
         try:
-            # Limpar cache local
-            self._cache_contratos.clear()
-            
-            # Limpar cache Redis (todas as chaves contratos:*)
-            deleted_count = self.cache.invalidate("contratos:*")
-            
-            logger.debug(f"🗑️ Cache de contratos invalidado: {deleted_count} chaves removidas do Redis")
-            
-            # Recarregar cache imediatamente para próximas buscas
-            self._carregar_cache_completo()
-            
+            if registro_id is not None:
+                self._cache_contratos.pop(str(registro_id), None)
+                self.cache.invalidate(cache_keys.contrato_key(registro_id))
+            else:
+                # Limpar cache local
+                self._cache_contratos.clear()
+                # Limpar cache Redis (todas as chaves contratos:*)
+                deleted_count = self.cache.invalidate(cache_keys.contratos_prefix())
+                logger.debug(f"🗑️ Cache de contratos invalidado: {deleted_count} chaves removidas do Redis")
         except Exception as e:
             logger.error(f"Erro ao invalidar cache de contratos: {e}")
     
@@ -289,14 +291,22 @@ class ContratoService(HistoricoMixin):
         Returns:
             Dicionário com os dados do contrato ou None
         """
-        if not self.disponivel:
-            logger.warning("MongoDB não disponível para busca")
-            return None
+        cache_key = cache_keys.contrato_key(contrato_id)
         
-        # Verificar cache primeiro
+        # Verificar cache local primeiro (mais rápido - O(1))
         if contrato_id in self._cache_contratos:
-            logger.debug(f"✓ Contrato encontrado no cache: {contrato_id}")
+            logger.debug(f"✓ Contrato encontrado no cache local: {contrato_id}")
             return self._cache_contratos[contrato_id]
+        
+        # Verificar cache Redis (cache-aside: hit evita query no Mongo)
+        try:
+            contrato_redis = self.cache.get(cache_key)
+            if contrato_redis:
+                self._cache_contratos[contrato_id] = contrato_redis
+                logger.debug(f"✓ Contrato encontrado no cache Redis: {contrato_id}")
+                return contrato_redis
+        except Exception:
+            pass
         
         try:
             # Converter string para ObjectId
@@ -309,9 +319,11 @@ class ContratoService(HistoricoMixin):
             documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
-                # Adicionar ao cache
+                # Cache-aside: popular cache local + Redis (com TTL)
                 self._cache_contratos[contrato_id] = documento
-                logger.debug(f"✓ Contrato encontrado por ID: {documento.get('nome')}")
+                ttl = cache_keys.ttl_padrao()
+                self.cache.set(cache_key, documento, ttl=ttl)
+                logger.debug(f"✓ Contrato encontrado por ID (cache miss): {documento.get('nome')}")
                 return documento
             else:
                 logger.debug(f"✗ Contrato não encontrado pelo ID: {contrato_id}")
@@ -378,7 +390,7 @@ class ContratoService(HistoricoMixin):
             # Inserir no MongoDB
             resultado = self.colecao.insert_one(doc)
             
-            # Invalidar cache
+            # Invalidar cache (novo contrato; prefixo todo é seguro)
             self._invalidar_cache()
             
             logger.info(f"✓ Contrato criado: {contrato_modelo.nome} - ID: {resultado.inserted_id}")
@@ -439,8 +451,11 @@ class ContratoService(HistoricoMixin):
             )
             
             if resultado.modified_count > 0:
-                # Invalidar cache
-                self._invalidar_cache()
+                # Invalidação direcionada por ID; renome limpa todo o prefixo (raro)
+                if "nome" in alteracoes:
+                    self._invalidar_cache()
+                else:
+                    self._invalidar_cache(registro_id=object_id)
                 campos = ", ".join([k for k in alteracoes.keys() if k not in ['atualizado_em', 'nome_normalizado']])
                 logger.info(f"✓ Contrato {object_id} atualizado - campos: {campos}")
                 return True
@@ -480,8 +495,8 @@ class ContratoService(HistoricoMixin):
             )
             
             if resultado.modified_count > 0:
-                # Invalidar cache
-                self._invalidar_cache()
+                # Invalidação direcionada por ID
+                self._invalidar_cache(registro_id=contrato_id)
                 logger.info(f"✓ Contrato atualizado: {contrato_modelo.nome}")
                 return True
             else:
@@ -532,8 +547,8 @@ class ContratoService(HistoricoMixin):
             )
             
             if resultado.modified_count > 0:
-                # Invalidar cache
-                self._invalidar_cache()
+                # Invalidação direcionada por ID
+                self._invalidar_cache(registro_id=contrato_id)
                 logger.info(f"✓ Contrato marcado como inativo: {contrato_id}")
                 return True
             else:
@@ -606,7 +621,7 @@ class ContratoService(HistoricoMixin):
             # Adicionar o ID gerado
             doc_contrato['_id'] = resultado.inserted_id
             
-            # Invalidar cache
+            # Invalidar cache (novo contrato auto-criado; prefixo todo é seguro)
             self._invalidar_cache()
             
             logger.info(f"✓ Contrato auto-criado: {nome_contrato} - ID: {resultado.inserted_id}")

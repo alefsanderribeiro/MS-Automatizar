@@ -6,6 +6,7 @@ Permite criar, atualizar, listar e remover funcionários
 from typing import Optional, List, Dict, Any
 from datetime import date
 from src.utils.logger_config import logger
+from src.utils.data_utils import parse_data_flexivel, formatar_data_br
 from src.models.funcionario_models import StatusFuncionario
 from src.models.contrato_models import StatusContrato
 from src.models.funcao_models import StatusFuncao
@@ -244,8 +245,6 @@ def _filtrar_por_empresa():
     servico_funcionario = FuncionarioService()
     servico_empresa = EmpresaService()
 
-    exibir_cabecalho("FILTRAR POR EMPRESA")
-
     try:
         # Listar todas as empresas
         resultado = servico_empresa.listar_todos()
@@ -279,6 +278,8 @@ def _filtrar_por_empresa():
 
         funcionarios = list(cursor)
 
+        # Cabeçalho único ANTES de exibir o resultado (não acumula com o
+        # menu pai e não é chamado no meio de um questionary - BUG 3/BUG 4).
         exibir_cabecalho(f"Funcionarios da empresa: {empresa_nome}")
 
         if not funcionarios:
@@ -339,8 +340,6 @@ def _filtrar_por_contrato():
     servico_funcionario = FuncionarioService()
     servico_contrato = ContratoService()
 
-    exibir_cabecalho("FILTRAR POR CONTRATO DA EMPRESA")
-
     try:
         # Listar todos os contratos
         contratos = servico_contrato.listar_todos()
@@ -370,6 +369,7 @@ def _filtrar_por_contrato():
 
         funcionarios = list(cursor)
 
+        # Cabeçalho único ANTES de exibir o resultado (BUG 3).
         exibir_cabecalho(f"Funcionarios do contrato: {contrato_nome}")
 
         if not funcionarios:
@@ -386,8 +386,6 @@ def _filtrar_por_funcao():
     """Filtra funcionários por função (seleção de lista)"""
     servico_funcionario = FuncionarioService()
     servico_funcao = FuncaoService()
-
-    exibir_cabecalho("FILTRAR POR FUNCAO")
 
     try:
         # Listar todas as funções
@@ -418,6 +416,7 @@ def _filtrar_por_funcao():
 
         funcionarios = list(cursor)
 
+        # Cabeçalho único ANTES de exibir o resultado (BUG 3).
         exibir_cabecalho(f"Funcionarios com funcao: {funcao_nome}")
 
         if not funcionarios:
@@ -433,8 +432,6 @@ def _filtrar_por_funcao():
 def _filtrar_por_data_nascimento():
     """Filtra funcionários por data de nascimento"""
     servico = FuncionarioService()
-
-    exibir_cabecalho("FILTRAR POR DATA DE NASCIMENTO")
 
     opcao = pedir_selecao(
         "Opcoes de filtro:",
@@ -475,8 +472,8 @@ def _filtrar_por_data_nascimento():
 
         elif "periodo" in opcao:
             # Filtrar por período
-            data_inicio = _input_data("Data inicial (YYYY-MM-DD):")
-            data_fim = _input_data("Data final (YYYY-MM-DD):")
+            data_inicio = _input_data("Data inicial (DD/MM/YYYY):")
+            data_fim = _input_data("Data final (DD/MM/YYYY):")
 
             if not data_inicio or not data_fim:
                 exibir_erro("Datas invalidas.")
@@ -491,7 +488,7 @@ def _filtrar_por_data_nascimento():
 
             funcionarios = list(cursor)
 
-            exibir_cabecalho(f"Funcionarios nascidos entre {data_inicio} e {data_fim}")
+            exibir_cabecalho(f"Funcionarios nascidos entre {formatar_data_br(data_inicio)} e {formatar_data_br(data_fim)}")
 
             if not funcionarios:
                 exibir_info("Nenhum funcionario encontrado neste periodo.")
@@ -530,8 +527,6 @@ def _filtrar_por_data_nascimento():
 def _filtrar_por_data_admissao():
     """Filtra funcionários por data de admissão"""
     servico = FuncionarioService()
-
-    exibir_cabecalho("FILTRAR POR DATA DE ADMISSAO")
 
     opcao = pedir_selecao(
         "Opcoes de filtro:",
@@ -583,8 +578,8 @@ def _filtrar_por_data_admissao():
 
         elif "periodo" in opcao:
             # Filtrar por período
-            data_inicio = _input_data("Data inicial (YYYY-MM-DD):")
-            data_fim = _input_data("Data final (YYYY-MM-DD):")
+            data_inicio = _input_data("Data inicial (DD/MM/YYYY):")
+            data_fim = _input_data("Data final (DD/MM/YYYY):")
 
             if not data_inicio or not data_fim:
                 exibir_erro("Datas invalidas.")
@@ -599,7 +594,7 @@ def _filtrar_por_data_admissao():
 
             funcionarios = list(cursor)
 
-            exibir_cabecalho(f"Funcionarios admitidos entre {data_inicio} e {data_fim}")
+            exibir_cabecalho(f"Funcionarios admitidos entre {formatar_data_br(data_inicio)} e {formatar_data_br(data_fim)}")
 
             if not funcionarios:
                 exibir_info("Nenhum funcionario encontrado neste periodo.")
@@ -638,8 +633,6 @@ def _filtrar_por_data_admissao():
 def _filtrar_por_data_demissao():
     """Filtra funcionários por data de demissão"""
     servico = FuncionarioService()
-
-    exibir_cabecalho("FILTRAR POR DATA DE DEMISSAO")
 
     opcao = pedir_selecao(
         "Opcoes de filtro:",
@@ -692,8 +685,8 @@ def _filtrar_por_data_demissao():
 
         elif "periodo" in opcao and "intervalo" in opcao:
             # Filtrar por período
-            data_inicio = _input_data("Data inicial (YYYY-MM-DD):")
-            data_fim = _input_data("Data final (YYYY-MM-DD):")
+            data_inicio = _input_data("Data inicial (DD/MM/YYYY):")
+            data_fim = _input_data("Data final (DD/MM/YYYY):")
 
             if not data_inicio or not data_fim:
                 exibir_erro("Datas invalidas.")
@@ -708,7 +701,7 @@ def _filtrar_por_data_demissao():
 
             funcionarios = list(cursor)
 
-            exibir_cabecalho(f"Funcionarios demitidos entre {data_inicio} e {data_fim}")
+            exibir_cabecalho(f"Funcionarios demitidos entre {formatar_data_br(data_inicio)} e {formatar_data_br(data_fim)}")
 
             if not funcionarios:
                 exibir_info("Nenhum funcionario encontrado neste periodo.")
@@ -895,7 +888,7 @@ def criar_funcionario():
     )
 
     # ==================== DATAS (opcionais) ====================
-    console.print("\n[cyan]DATAS (formato: YYYY-MM-DD, deixe vazio para pular)[/cyan]")
+    console.print("\n[cyan]DATAS (formato: DD/MM/YYYY ou YYYY-MM-DD, deixe vazio para pular)[/cyan]")
 
     data_admissao = _input_data("  Data de admissao:")
     data_nascimento = _input_data("  Data de nascimento:")
@@ -1065,13 +1058,13 @@ def atualizar_funcionario():
                 alteracoes["diretorio_id"] = ObjectId(diretorio_id)
 
         elif opcao == "Data de Admissao":
-            nova_data = _input_data("Nova data de admissao (YYYY-MM-DD):")
+            nova_data = _input_data("Nova data de admissao (DD/MM/YYYY):")
             if nova_data:
                 from datetime import datetime
                 alteracoes["data_admissao"] = datetime.combine(nova_data, datetime.min.time())
 
         elif opcao == "Data de Nascimento":
-            nova_data = _input_data("Nova data de nascimento (YYYY-MM-DD):")
+            nova_data = _input_data("Nova data de nascimento (DD/MM/YYYY):")
             if nova_data:
                 from datetime import datetime
                 alteracoes["data_nascimento"] = datetime.combine(nova_data, datetime.min.time())
@@ -1154,7 +1147,7 @@ def remover_funcionario():
         return
 
     # Solicitar data de demissão
-    data_demissao = _input_data("Data de demissao (YYYY-MM-DD, ENTER para hoje):")
+    data_demissao = _input_data("Data de demissao (DD/MM/YYYY, ENTER para hoje):")
     if not data_demissao:
         data_demissao = date.today()
 
@@ -1595,16 +1588,16 @@ def _exibir_detalhes_funcionario(funcionario: Dict[str, Any]):
 
 
 def _input_data(mensagem: str) -> Optional[date]:
-    """Solicita uma data do usuário no formato YYYY-MM-DD"""
+    """Solicita uma data do usuário. Aceita DD/MM/YYYY (default) ou YYYY-MM-DD."""
     data_str = pedir_texto(mensagem, obrigatorio=False)
     if not data_str:
         return None
 
-    try:
-        return date.fromisoformat(data_str)
-    except ValueError:
-        exibir_aviso("Data invalida. Use o formato YYYY-MM-DD")
+    data_parseada = parse_data_flexivel(data_str, retornar_date=True)
+    if data_parseada is None:
+        exibir_aviso("Data invalida. Use DD/MM/YYYY (ex: 15/08/2026) ou YYYY-MM-DD")
         return None
+    return data_parseada
 
 
 # ==================== FUNÇÕES DE EXPORTAÇÃO ====================

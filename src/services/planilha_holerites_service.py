@@ -107,7 +107,7 @@ class PlanilhaHoleritesService:
         if not caminho:
             # Caminho padrão dentro do projeto
             base_dir = Path(__file__).parent.parent
-            caminho = str(base_dir / "data" / "models" / "Planilha de Contatos - Holerites.xlsx")
+            caminho = str(base_dir / "data" / "models" / "planilha_holerites.xlsx")
         
         return caminho
     

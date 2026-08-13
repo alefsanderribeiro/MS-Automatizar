@@ -720,7 +720,7 @@ class WhatsAppService:
             Exemplo: [
                 {
                     "id": "WhatsApp-Alefe",
-                    "display_name": "Alefsander Ribeiro",
+                    "display_name": "Operador MS",
                     "state": "logged_in",
                     "jid": "556993451333@s.whatsapp.net",
                     "created_at": "2026-01-29T19:50:40.864764866Z"

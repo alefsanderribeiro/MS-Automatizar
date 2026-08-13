@@ -556,6 +556,7 @@ class GeradorFolhaPonto:
                 data_fim=data_final,
                 dias=dias,
                 nome_funcionario=nome_funcionario,
+                nome_normalizado=self._normalizar_nome(nome_funcionario) if nome_funcionario else None,
                 cpf_funcionario=cpf_funcionario,
                 cargo_funcionario=cargo_funcionario,
                 contrato_funcionario=contrato_funcionario,
@@ -1464,6 +1465,422 @@ class Folha_de_Ponto:
                 
         except Exception as e:
             logger.error(f"Erro ao gerar PDF de folha existente: {e}")
+            return None
+
+    # ==================== EDIÇÃO DE FOLHA GERADA ====================
+
+    def _montar_contexto_html_editado(
+        self,
+        folha: Dict[str, Any],
+        data_referencia: date,
+        funcionario: Optional[Dict[str, Any]] = None,
+        empresa: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Monta o contexto HTML de uma folha editada para regenerar o PDF.
+
+        Reutiliza a estrutura de ``criar_contexto_html`` preenchendo os dias
+        com os dados editados (horários, observações, tipo de dia).
+
+        Args:
+            folha: Documento da folha (do MongoDB)
+            data_referencia: Data de referência (mês/ano)
+            funcionario: Documento do funcionário (opcional)
+            empresa: Documento da empresa (opcional)
+
+        Returns:
+            Dict com o contexto pronto para renderizar o template HTML
+        """
+        folha_data = folha.get("folha_data", {}) or {}
+        dias_mongodb = folha_data.get("dias", []) or []
+
+        # Mapa dia_numero -> dados editados
+        dias_por_numero = {}
+        for dia in dias_mongodb:
+            if isinstance(dia, dict):
+                numero = dia.get("numero_dia")
+            else:
+                numero = getattr(dia, "numero_dia", None)
+            if numero is not None:
+                dias_por_numero[numero] = dia
+
+        # Resolver feriados do período para marcar eh_descanso
+        feriados = set()
+        try:
+            if self.processador_folha_ponto and hasattr(self.processador_folha_ponto, 'feriados'):
+                import pandas as pd
+                feriados_df = self.processador_folha_ponto.feriados
+                if isinstance(feriados_df, pd.DataFrame) and 'DATA' in feriados_df.columns:
+                    feriados = {
+                        d.date() for d in feriados_df['DATA'].dropna().tolist()
+                        if isinstance(d, datetime) or hasattr(d, 'date')
+                    }
+        except Exception:
+            pass
+
+        nomes_dias_pt = {
+            0: 'Segunda', 1: 'Terça', 2: 'Quarta', 3: 'Quinta',
+            4: 'Sexta', 5: 'Sábado', 6: 'Domingo',
+        }
+
+        data_inicial = data_referencia.replace(day=1)
+        ultimo_dia = calendar.monthrange(data_referencia.year, data_referencia.month)[1]
+        data_final = date(data_referencia.year, data_referencia.month, ultimo_dia)
+
+        dias = []
+        current_date = data_inicial
+        while current_date <= data_final:
+            eh_feriado = current_date in feriados
+            eh_fim_de_semana = current_date.weekday() >= 5
+
+            dia_numero = current_date.day
+            dia_mongo = dias_por_numero.get(dia_numero, {}) or {}
+
+            def _campo(dia, nome):
+                if isinstance(dia, dict):
+                    return dia.get(nome)
+                return getattr(dia, nome, None)
+
+            entrada = _campo(dia_mongo, "hora_entrada") or ""
+            saida = _campo(dia_mongo, "hora_saida") or ""
+            intervalo_inicio = _campo(dia_mongo, "hora_intervalo_inicio") or ""
+            intervalo_fim = _campo(dia_mongo, "hora_intervalo_fim") or ""
+            observacoes = _campo(dia_mongo, "observacoes") or ""
+            tipo_dia = _campo(dia_mongo, "tipo_dia") or ""
+            if hasattr(tipo_dia, "value"):
+                tipo_dia = tipo_dia.value
+
+            # Tipo de dia FALTA/FERIADO vira observação no PDF
+            obs_final = observacoes or ""
+            if tipo_dia and str(tipo_dia).upper() in ("FALTA", "FERIADO", "ATESTADO", "FOLGA", "LICENÇA", "LICENCA", "FÉRIAS", "FERIAS"):
+                obs_final = (f"{tipo_dia}: {obs_final}").strip() if obs_final else str(tipo_dia)
+
+            dias.append({
+                'dia_numero': str(dia_numero).zfill(2),
+                'dia_semana': nomes_dias_pt[current_date.weekday()],
+                'entrada': entrada,
+                'intervalo_inicio': intervalo_inicio,
+                'intervalo_fim': intervalo_fim,
+                'termino': saida,
+                'observacoes': obs_final,
+                'eh_descanso': eh_feriado or eh_fim_de_semana,
+            })
+            current_date += timedelta(days=1)
+
+        # Dados da empresa
+        dados_empresa = {}
+        if empresa:
+            dados_empresa = {
+                'nome': empresa.get('nome', ''),
+                'atividade': empresa.get('atividade', ''),
+                'endereco': empresa.get('endereco', ''),
+                'cnpj': empresa.get('cnpj', ''),
+            }
+
+        funcionario_data = folha_data
+        contexto = {
+            'FP': {
+                'id': str(folha.get('_id', '')) if folha.get('_id') else '',
+                'periodo_inicio': data_inicial.strftime('%d/%m/%Y'),
+                'periodo_fim': data_final.strftime('%d/%m/%Y'),
+            },
+            'periodo': {
+                'inicio': data_inicial.strftime('%d/%m/%Y'),
+                'fim': data_final.strftime('%d/%m/%Y'),
+            },
+            'data_geracao': datetime.now().strftime('%d/%m/%Y'),
+            'empresa': dados_empresa,
+            'funcionario': {
+                'nome': funcionario_data.get('nome_funcionario') if not funcionario else funcionario.get('nome', funcionario_data.get('nome_funcionario', '')),
+                'cargo': funcionario_data.get('cargo_funcionario', ''),
+                'departamento': funcionario_data.get('lotacao_funcionario', ''),
+                'lotacao': funcionario_data.get('lotacao_funcionario', ''),
+                'contrato': funcionario_data.get('contrato_funcionario', ''),
+                'horario': funcionario_data.get('horario_funcionario', ''),
+                'cpf': funcionario_data.get('cpf_funcionario', '') or '',
+            },
+            'dias': dias,
+            'total_dias': len(dias),
+            'feriados': [d.strftime('%d/%m/%Y') for d in sorted(feriados)],
+        }
+
+        return contexto
+
+    def regenerar_pdf_folha(
+        self,
+        folha: Dict[str, Any],
+        diretorio_destino: Union[str, Path] = None,
+    ) -> Optional[str]:
+        """
+        Regenera o PDF de uma folha editada a partir dos dados do MongoDB
+        (dias já editados/recalculados), mantendo banco e PDF consistentes.
+
+        Args:
+            folha: Documento da folha (do MongoDB)
+            diretorio_destino: Diretório customizado para salvar o PDF
+
+        Returns:
+            Caminho do PDF gerado ou None se erro
+        """
+        try:
+            if not self.html_template or not self.html_converter:
+                logger.error("Template HTML ou conversor não disponível para regenerar PDF")
+                return None
+
+            funcionario_id = folha.get("funcionario_id")
+            empresa_id = folha.get("empresa_id")
+            mes_referencia = folha.get("mes_referencia", "")
+
+            if not funcionario_id or not empresa_id:
+                logger.error("Funcionário ou empresa não encontrados na folha")
+                return None
+
+            try:
+                ano, mes = mes_referencia.split('-')
+                data_referencia = date(int(ano), int(mes), 1)
+            except Exception:
+                data_referencia = date.today()
+
+            # Buscar funcionário e empresa para contexto
+            funcionario = None
+            empresa = None
+            try:
+                if self.gerador_folha_ponto and self.gerador_folha_ponto.servico_funcionario:
+                    funcionario = self.gerador_folha_ponto.servico_funcionario.buscar_por_object_id(funcionario_id)
+            except Exception:
+                pass
+            try:
+                if self.gerador_folha_ponto and self.gerador_folha_ponto.servico_empresa:
+                    empresa = self.gerador_folha_ponto.servico_empresa.buscar_por_id(str(empresa_id))
+            except Exception:
+                pass
+
+            contexto = self._montar_contexto_html_editado(
+                folha, data_referencia, funcionario=funcionario, empresa=empresa
+            )
+
+            html_text = self.html_template.render(contexto)
+
+            # Determinar caminho do PDF
+            if diretorio_destino:
+                diretorio_pdf = Path(diretorio_destino)
+                diretorio_pdf.mkdir(parents=True, exist_ok=True)
+                nome_arquivo = f"folha_{mes_referencia}_{str(funcionario_id)[-6:]}.pdf"
+                caminho_arquivo_pdf = diretorio_pdf / nome_arquivo
+            else:
+                caminho_existente = folha.get("caminho_arquivo_gerado")
+                if caminho_existente:
+                    caminho_arquivo_pdf = Path(caminho_existente)
+                    caminho_arquivo_pdf.parent.mkdir(parents=True, exist_ok=True)
+                else:
+                    # Fallback: usar estrutura de diretórios padrão
+                    gerenciador = self.gerenciador_diretorios
+                    diretorio_geral = gerenciador.buscar_diretorio_geral_ponto()
+                    nome_funcionario = contexto.get('funcionario', {}).get('nome', 'FUNCIONARIO')
+                    safe_nome = re.sub(r'[^A-Za-z0-9 _-]', '', nome_funcionario or '').strip() or "FUNCIONARIO"
+                    safe_nome = re.sub(r'\s+', ' ', safe_nome)
+                    diretorio_pdf = diretorio_geral / str(data_referencia.year) / f"{data_referencia.strftime('%m')}.{data_referencia.strftime('%Y')}"
+                    diretorio_pdf.mkdir(parents=True, exist_ok=True)
+                    caminho_arquivo_pdf = diretorio_pdf / f"{safe_nome.title()}.pdf"
+
+            self.html_converter.salvar_html_como_pdf(html_text, caminho_arquivo_pdf)
+            logger.info(f"✓ PDF regenerado: {caminho_arquivo_pdf}")
+            return str(caminho_arquivo_pdf)
+
+        except Exception as e:
+            logger.error(f"Erro ao regenerar PDF da folha: {e}")
+            logger.debug(traceback.format_exc())
+            return None
+
+    def editar_folha(
+        self,
+        folha_id: str,
+        dias_editados: Optional[List[Dict[str, Any]]] = None,
+        observacoes_gerais: Optional[str] = None,
+        atualizar_pdf: bool = True,
+        diretorio_destino: Union[str, Path] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Edita uma folha de ponto já gerada:
+        1. Aplica as alterações nos dias (horários, tipo de dia, observações)
+        2. RECALCULA os totais (mesmo cálculo da geração)
+        3. REGENERA o PDF automaticamente (banco e PDF nunca divergem)
+        4. Incrementa ``versao`` e registra em ``historico_alteracoes``
+
+        Args:
+            folha_id: ObjectId da folha no MongoDB
+            dias_editados: Lista de dicts com os dias corrigidos. Cada dict:
+                {"numero_dia": int, "hora_entrada": ..., "hora_saida": ...,
+                 "hora_intervalo_inicio": ..., "hora_intervalo_fim": ...,
+                 "tipo_dia": ..., "observacoes": ...}
+            observacoes_gerais: Observação geral da folha (opcional)
+            atualizar_pdf: Se True, regenera o PDF automaticamente
+            diretorio_destino: Diretório customizado para o PDF
+
+        Returns:
+            Dict com resultado ou None se erro:
+                {"status": "sucesso", "folha_id": ..., "versao": ...,
+                 "caminho_pdf": ..., "totais": {...}}
+        """
+        try:
+            from src.processadores.processador_folha_ponto import (
+                calcular_total_horas,
+                recalcular_totais_folha,
+            )
+            from src.services.folha_ponto_service import FolhaDePontoService
+
+            servico = None
+            if self.gerador_folha_ponto and self.gerador_folha_ponto.servico_folha_ponto:
+                servico = self.gerador_folha_ponto.servico_folha_ponto
+            else:
+                servico = FolhaDePontoService()
+
+            if not servico or not servico.disponivel:
+                logger.error("Serviço de folha de ponto não disponível para edição")
+                return None
+
+            folha = servico.buscar_por_id(folha_id)
+            if not folha:
+                logger.error(f"Folha não encontrada para edição: {folha_id}")
+                return None
+
+            if folha.get("excluida"):
+                logger.warning(f"Folha {folha_id} está excluída (soft delete). Edição bloqueada.")
+                return {"status": "bloqueada", "motivo": "Folha excluída"}
+
+            # Aplicar edições nos dias
+            folha_data = folha.get("folha_data", {}) or {}
+            dias = folha_data.get("dias", []) or []
+            dias_por_numero = {}
+            for dia in dias:
+                if isinstance(dia, dict):
+                    dias_por_numero[dia.get("numero_dia")] = dia
+                else:
+                    dias_por_numero[getattr(dia, "numero_dia", None)] = dia
+
+            campos_dia = [
+                "hora_entrada", "hora_saida", "hora_intervalo_inicio",
+                "hora_intervalo_fim", "tipo_dia", "observacoes",
+                "preenchido_manualmente",
+            ]
+
+            campos_alterados = []
+            for edicao in dias_editados or []:
+                numero = edicao.get("numero_dia")
+                if numero is None:
+                    continue
+                dia_alvo = dias_por_numero.get(numero)
+                if dia_alvo is None:
+                    continue
+
+                # Guardar estado anterior p/ histórico
+                estado_anterior = {}
+                for campo in campos_dia:
+                    if isinstance(dia_alvo, dict):
+                        estado_anterior[campo] = dia_alvo.get(campo)
+                    else:
+                        estado_anterior[campo] = getattr(dia_alvo, campo, None)
+
+                for campo, valor in edicao.items():
+                    if campo == "numero_dia":
+                        continue
+                    if isinstance(dia_alvo, dict):
+                        dia_alvo[campo] = valor
+                    else:
+                        setattr(dia_alvo, campo, valor)
+
+                # Limpar campos marcados (string vazia = intenção de limpar)
+                for campo_limpar in edicao.get("limpar_campos", []):
+                    if isinstance(dia_alvo, dict):
+                        dia_alvo[campo_limpar] = None
+                    else:
+                        setattr(dia_alvo, campo_limpar, None)
+
+                # Recalcular total_horas_trabalhadas do dia
+                entrada = edicao.get("hora_entrada", estado_anterior.get("hora_entrada"))
+                saida = edicao.get("hora_saida", estado_anterior.get("hora_saida"))
+                intervalo_inicio = edicao.get("hora_intervalo_inicio", estado_anterior.get("hora_intervalo_inicio"))
+                intervalo_fim = edicao.get("hora_intervalo_fim", estado_anterior.get("hora_intervalo_fim"))
+                # Se campo foi limpo, usar None (não o valor antigo)
+                for campo_limpar in edicao.get("limpar_campos", []):
+                    if campo_limpar == "hora_entrada":
+                        entrada = None
+                    elif campo_limpar == "hora_saida":
+                        saida = None
+                    elif campo_limpar == "hora_intervalo_inicio":
+                        intervalo_inicio = None
+                    elif campo_limpar == "hora_intervalo_fim":
+                        intervalo_fim = None
+
+                total_horas_dia = calcular_total_horas(entrada, saida, intervalo_inicio, intervalo_fim)
+                if isinstance(dia_alvo, dict):
+                    dia_alvo["total_horas_trabalhadas"] = total_horas_dia
+                else:
+                    setattr(dia_alvo, "total_horas_trabalhadas", total_horas_dia)
+
+                if edicao.get("hora_entrada") or edicao.get("hora_saida") or edicao.get("tipo_dia") or edicao.get("observacoes"):
+                    campos_alterados.append(numero)
+
+            # Recalcular totais do mês (mesmo cálculo da geração)
+            totais = recalcular_totais_folha(dias)
+
+            nova_folha_data = dict(folha_data)
+            nova_folha_data["dias"] = dias
+            nova_folha_data["total_horas_mes"] = totais["total_horas_mes"]
+            nova_folha_data["total_faltas"] = totais["total_faltas"]
+            nova_folha_data["total_feriados"] = totais["total_feriados"]
+            nova_folha_data["total_finais_semana"] = totais["total_finais_semana"]
+            nova_folha_data["preenchimento_concluido"] = True
+            # Garantir nome_normalizado (cobre folhas antigas sem o campo)
+            nome_func = nova_folha_data.get("nome_funcionario")
+            if nome_func and not nova_folha_data.get("nome_normalizado"):
+                nova_folha_data["nome_normalizado"] = self._normalizar_nome(nome_func)
+            if observacoes_gerais:
+                nova_folha_data["observacoes_gerais"] = observacoes_gerais
+
+            detalhes_historico = {
+                "dias_alterados": campos_alterados,
+                "totais": totais,
+            }
+            if observacoes_gerais:
+                detalhes_historico["observacoes_gerais"] = observacoes_gerais
+
+            # Regenerar PDF ANTES de salvar para gravar o caminho atualizado no banco
+            caminho_pdf = None
+            if atualizar_pdf:
+                caminho_pdf = self.regenerar_pdf_folha(
+                    {**folha, "folha_data": nova_folha_data},
+                    diretorio_destino=diretorio_destino,
+                )
+                if caminho_pdf:
+                    nova_folha_data["caminho_pdf_regenerado"] = caminho_pdf
+
+            # Salvar no banco com versão + histórico
+            salvo = servico.atualizar_folha(
+                folha_id,
+                {"folha_data": nova_folha_data, "caminho_arquivo_gerado": caminho_pdf or folha.get("caminho_arquivo_gerado")},
+                acao="Folha editada manualmente",
+                detalhes_historico=detalhes_historico,
+            )
+
+            if not salvo:
+                logger.error(f"Falha ao salvar edição da folha {folha_id}")
+                return None
+
+            versao_nova = folha.get("versao", 1) + 1
+            logger.info(f"✓ Folha editada: {folha_id} (versão {versao_nova})")
+            return {
+                "status": "sucesso",
+                "folha_id": folha_id,
+                "versao": versao_nova,
+                "caminho_pdf": caminho_pdf,
+                "totais": totais,
+                "dias_alterados": campos_alterados,
+            }
+
+        except Exception as e:
+            logger.error(f"Erro ao editar folha: {e}")
+            logger.debug(traceback.format_exc())
             return None
 
     def análise_folha_de_ponto(

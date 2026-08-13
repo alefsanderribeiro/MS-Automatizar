@@ -169,6 +169,15 @@ def registrar_historico(
                 if resultado.modified_count > 0:
                     campos_str = ", ".join([k for k in alteracoes.keys() if k != 'atualizado_em'])
                     logger.info(f"✓ Documento {object_id} atualizado com histórico - campos: {campos_str}")
+                    # Invalidação de cache após escrita bem-sucedida — garante que
+                    # "toda escrita invalida" vige também quando o histórico é registrado
+                    # (o corpo da função decorada não é executado neste caminho).
+                    invalidar = getattr(self, '_invalidar_cache', None)
+                    if callable(invalidar):
+                        try:
+                            invalidar(registro_id=object_id)
+                        except TypeError:
+                            invalidar()
                     return True
                 else:
                     logger.debug(f"Documento {object_id} sem alterações")

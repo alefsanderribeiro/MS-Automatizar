@@ -18,6 +18,7 @@ from src.utils.dotenv_path import caminho_dotenv
 from src.utils.logger_config import logger
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.cache_service import cache_service
+from src.services import cache_keys
 from src.models.diretorio_models import DiretorioMongoDB, DiretorioBuilder, DIRETORIO_PADRAO, StatusDiretorio
 from src.services.mongodb_connection import MongoDBConnectionPool
 
@@ -208,28 +209,33 @@ class DiretorioService(HistoricoMixin):
         except Exception as e:
             logger.error(f"Erro ao carregar cache de diretórios: {e}")
     
-    def _invalidar_cache(self) -> None:
+    def _invalidar_cache(self, registro_id=None) -> None:
         """
-        Invalida TODO o cache de diretórios (memória + Redis).
-        
-        Deve ser chamado após operações de CREATE, UPDATE ou DELETE
-        para garantir que próximas leituras busquem dados atualizados.
-        
-        Após invalidação, próxima busca recarregará o cache automaticamente.
+        Invalida o cache de diretórios (memória + Redis) de forma direcionada.
+
+        - ``registro_id`` informado: invalida a chave do registro (cache-aside). A
+          próxima leitura repopula SEM recarregar toda a coleção. O dict secundário
+          ``_cache_por_contrato`` (indexado por ``contrato_id``) é pequeno e não
+          é trivial mapear ``diretorio_id`` → ``contrato_id`` no momento da escrita;
+          por isso usamos ``clear()`` nele — é barato e elimina qualquer risco de
+          *stale* (regressão do bug de chaves distintas em ``pop()``).
+        - ``registro_id`` None (ex: criação/renome): invalida o prefixo ``diretorios:*``.
         """
         try:
-            # Limpar caches locais
-            self._cache_diretorios.clear()
-            self._cache_por_contrato.clear()
-            
-            # Limpar cache Redis (todas as chaves diretorios:*)
-            deleted_count = self.cache.invalidate("diretorios:*")
-            
-            logger.debug(f"🗑️ Cache de diretórios invalidado: {deleted_count} chaves removidas do Redis")
-            
-            # Recarregar cache imediatamente para próximas buscas
-            self._carregar_cache_completo()
-            
+            if registro_id is not None:
+                # Cache primário indexado por diretorio_id → pop direcionado.
+                self._cache_diretorios.pop(str(registro_id), None)
+                # Cache secundário indexado por contrato_id → não dá para saber o
+                # contrato aqui sem consultar; limpar o dict (pequeno) é seguro.
+                self._cache_por_contrato.clear()
+                self.cache.invalidate(cache_keys.diretorio_key(registro_id))
+            else:
+                # Limpar caches locais
+                self._cache_diretorios.clear()
+                self._cache_por_contrato.clear()
+                # Limpar cache Redis (todas as chaves diretorios:*)
+                deleted_count = self.cache.invalidate(cache_keys.diretorios_prefix())
+                logger.debug(f"🗑️ Cache de diretórios invalidado: {deleted_count} chaves removidas do Redis")
         except Exception as e:
             logger.error(f"Erro ao invalidar cache de diretórios: {e}")
     
@@ -298,14 +304,22 @@ class DiretorioService(HistoricoMixin):
         Returns:
             Dicionário com os dados do diretório ou None
         """
-        if not self.disponivel:
-            logger.warning("MongoDB não disponível para busca")
-            return None
+        cache_key = cache_keys.diretorio_key(diretorio_id)
         
-        # Verificar cache primeiro
+        # Verificar cache local primeiro (mais rápido - O(1))
         if diretorio_id in self._cache_diretorios:
-            logger.debug(f"✓ Diretório encontrado no cache: {diretorio_id}")
+            logger.debug(f"✓ Diretório encontrado no cache local: {diretorio_id}")
             return self._cache_diretorios[diretorio_id]
+        
+        # Verificar cache Redis (cache-aside: hit evita query no Mongo)
+        try:
+            diretorio_redis = self.cache.get(cache_key)
+            if diretorio_redis:
+                self._cache_diretorios[diretorio_id] = diretorio_redis
+                logger.debug(f"✓ Diretório encontrado no cache Redis: {diretorio_id}")
+                return diretorio_redis
+        except Exception:
+            pass
         
         try:
             # Converter string para ObjectId
@@ -318,9 +332,11 @@ class DiretorioService(HistoricoMixin):
             documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
-                # Adicionar ao cache
+                # Cache-aside: popular cache local + Redis (com TTL)
                 self._cache_diretorios[diretorio_id] = documento
-                logger.debug(f"✓ Diretório encontrado por ID: {documento.get('nome')}")
+                ttl = cache_keys.ttl_padrao()
+                self.cache.set(cache_key, documento, ttl=ttl)
+                logger.debug(f"✓ Diretório encontrado por ID (cache miss): {documento.get('nome')}")
                 return documento
             else:
                 logger.debug(f"✗ Diretório não encontrado pelo ID: {diretorio_id}")
@@ -639,8 +655,11 @@ class DiretorioService(HistoricoMixin):
             )
             
             if resultado.modified_count > 0:
-                # Invalidar cache
-                self._invalidar_cache()
+                # Invalidação direcionada por ID; renome limpa todo o prefixo (raro)
+                if "nome" in alteracoes:
+                    self._invalidar_cache()
+                else:
+                    self._invalidar_cache(registro_id=object_id)
                 
                 campos = ", ".join([k for k in alteracoes.keys() if k not in ['atualizado_em', 'nome_normalizado']])
                 logger.info(f"✓ Diretório {object_id} atualizado - campos: {campos}")
@@ -702,8 +721,8 @@ class DiretorioService(HistoricoMixin):
             )
             
             if resultado.modified_count > 0:
-                # Invalidar cache
-                self._invalidar_cache()
+                # Invalidação direcionada por ID
+                self._invalidar_cache(registro_id=diretorio_id)
                 logger.info(f"✓ Diretório marcado como inativo: {diretorio_id}")
                 return True
             else:

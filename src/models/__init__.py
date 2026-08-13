@@ -41,6 +41,14 @@ from .envio_folha_ponto_models import (
     EnvioFolhaPontoBuilder,
 )
 
+# Modelos de Configuração de Envio de Folha de Ponto
+from .config_envio_folha_ponto_models import (
+    SimNaoEnum,
+    OrigemConfigEnum,
+    ConfigEnvioFolhaPontoMongoDB,
+    ConfigEnvioFolhaPontoBuilder,
+)
+
 # Modelos de Template de Mensagem
 from .template_mensagem_models import (
     TipoTemplateEnum,
@@ -85,6 +93,12 @@ __all__ = [
     "StatusEnvioEnum",
     "EnvioFolhaPontoMongoDB",
     "EnvioFolhaPontoBuilder",
+
+    # Configuração de Envio de Folha de Ponto
+    "SimNaoEnum",
+    "OrigemConfigEnum",
+    "ConfigEnvioFolhaPontoMongoDB",
+    "ConfigEnvioFolhaPontoBuilder",
     
     # Template de Mensagem
     "TipoTemplateEnum",

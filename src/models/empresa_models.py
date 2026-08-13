@@ -460,7 +460,7 @@ if __name__ == "__main__":
         .set_cnpj("11.111.111/0001-11")
         .set_atividade("Soluções Empresariais")
         .set_contato("(11) 3333-3333", "info@enterprise.com.br")
-        .set_responsavel("Carlos Santos")
+        .set_responsavel("Ana Pereira")
         .set_status(StatusEmpresa.ATIVA)
         .build()
     )

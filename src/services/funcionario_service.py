@@ -11,7 +11,6 @@ from src.utils.logger_config import logger
 from src.utils.dotenv_path import caminho_dotenv
 from src.services.mongodb_connection import MongoDBConnectionPool
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
-from src.services.cache_service import cache_service
 from src.models.funcionario_models import StatusFuncionario, StatusCadastro
 
 try:

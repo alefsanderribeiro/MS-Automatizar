@@ -840,7 +840,7 @@ def _importar_feriados_excel():
             from scripts.migrar_feriados import migrar_feriados_excel
 
         # Caminho padrão do Excel
-        caminho_padrao = Path(__file__).parent.parent / "data" / "input" / "30.07.25 - 10.09 - Folha de Ponto - Alefe - Dados.xlsx"
+        caminho_padrao = Path(__file__).parent.parent / "data" / "input" / "folha_ponto_dados.xlsx"
 
         exibir_cabecalho("Importar Feriados do Excel", ICONES["excel"])
         console.print(f"Arquivo padrao: {caminho_padrao.name}")

@@ -88,7 +88,7 @@ class PlanilhaContatosService:
         if not caminho:
             # Caminho padrão dentro do projeto
             base_dir = Path(__file__).parent.parent
-            caminho = str(base_dir / "data" / "models" / "Planilha de Contatos - Folhas de Ponto.xlsx")
+            caminho = str(base_dir / "data" / "models" / "planilha_contatos.xlsx")
         
         return caminho
     

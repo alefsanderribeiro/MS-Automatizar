@@ -20,7 +20,10 @@ class ServiceBaseGemini(ABC):
     def __init__(self, **kwargs):
         self._api_key = dotenv.get_key(caminho_dotenv(), "KEY_API_GEMINI")
         self._sdk_disponivel = False
-        self._client = genai.Client(api_key=self._api_key)
+        # Cliente criado sob demanda em _configurar_sdk(): só é instanciado quando
+        # há API key configurada. Sem key, _client fica None e o serviço opera em
+        # modo "não configurado" (estrutura preservada para implementação futura).
+        self._client = None
         self._model = None
         self._default_config_kwargs = kwargs  # Armazena os kwargs padrão
         self._configurado = self._configurar_sdk()
@@ -28,8 +31,10 @@ class ServiceBaseGemini(ABC):
     def _configurar_sdk(self) -> bool:
         if not self.api_key:
             logger.warning(f"IA: API Key não configurada para {self.__class__.__name__}")
+            self._client = None
             return False
         try:
+            self._client = genai.Client(api_key=self._api_key)
             self._sdk_disponivel = True
             return True
         except ImportError:
