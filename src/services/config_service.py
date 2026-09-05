@@ -13,7 +13,9 @@ from enum import Enum
 
 import dotenv
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("config")
 
 
 class ModoOperacao(Enum):
@@ -140,6 +142,8 @@ class ConfigService:
     }
     
     def __init__(self):
+
+        self.logger = get_logger("config")
         """Inicializa o serviço de configurações"""
         self.env_path = caminho_dotenv()
         self._carregar_configs()

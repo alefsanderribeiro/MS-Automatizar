@@ -13,11 +13,15 @@ from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
-from src.utils.logger_config import logger
 from src.utils.retry_utils import obter_config_retry
 
 from src.models.holerite_models import StatusHoleriteEnum
 from src.models.template_mensagem_models import TipoTemplateEnum
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("holerite")
+
 from src.services.planilha_holerites_service import (
     planilha_holerites_service, 
     TipoEnvioHolerite
@@ -294,7 +298,7 @@ class EnvioHoleriteOrquestrador:
 Segue anexo do(s) recibo(s) de pagamento referente ao mês de {contexto.get('mes_extenso', '')}/{ano}.
 
 Atenciosamente,
-a empresa cliente"""
+Moraes e Santos"""
             }
         
         # Enviar
@@ -657,7 +661,9 @@ a empresa cliente"""
         if canais is None:
             canais = ["email", "whatsapp"]
         
-        self._reportar_progresso(f"Iniciando envio de holerites via MongoDB ({competencia})...")
+        # Correlation ID para rastreamento do fluxo de envio
+        with logger.correlation("envio_holerite_mongodb") as corr_id:
+            self._reportar_progresso(f"Iniciando envio de holerites via MongoDB ({competencia})...")
         
         # Buscar holerites pendentes
         holerites = holerite_service.listar_pendentes_envio(

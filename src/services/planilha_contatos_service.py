@@ -14,8 +14,9 @@ from pathlib import Path
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.utils.telefone_utils import parsear_multiplos_telefones
+from src.utils.logger_config_v2 import get_logger
+
 
 # Tentativa de importação do pandas
 try:
@@ -66,6 +67,8 @@ class PlanilhaContatosService:
     VALORES_SIM = ["S", "SIM", "YES", "Y", "1", "TRUE", "X"]
     
     def __init__(self, planilha_path: str = None):
+
+        self.logger = get_logger("planilha")
         """
         Inicializa o service
         
@@ -88,7 +91,7 @@ class PlanilhaContatosService:
         if not caminho:
             # Caminho padrão dentro do projeto
             base_dir = Path(__file__).parent.parent
-            caminho = str(base_dir / "data" / "models" / "planilha_contatos.xlsx")
+            caminho = str(base_dir / "data" / "models" / "Planilha de Contatos - Folhas de Ponto.xlsx")
         
         return caminho
     

@@ -11,7 +11,11 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass, field
 
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("holerite")
+
 from src.models.holerite_models import (
     HoleriteExtracaoSchema,
     HoleriteMongoDB,
@@ -202,6 +206,10 @@ class HoleriteProcessador:
         resultado = ResultadoProcessamentoHolerite(arquivo=str(arquivo))
         tempo_inicio = time.time()
         
+        # Correlation ID para rastreamento ponta-a-ponta
+        with logger.correlation("processar_holerite") as corr_id:
+            logger.info(f"Processando holerite: {arquivo.name}", correlation_id=corr_id)
+        
         # Validações iniciais
         if not self.disponivel:
             resultado.erro = "Processador não disponível (Gemini ou MongoDB indisponível)"
@@ -223,7 +231,8 @@ class HoleriteProcessador:
         
         if hash_arquivo:
             # Verificar se já foi processado
-            existente = self.holerite_service.buscar_por_hash(hash_arquivo)
+            with logger.performance("verificar_hash_duplicata"):
+                existente = self.holerite_service.buscar_por_hash(hash_arquivo)
             if existente:
                 resultado.sucesso = True
                 resultado.holerite_id = str(existente['_id'])
@@ -240,12 +249,13 @@ class HoleriteProcessador:
         
         for tentativa in range(1, max_tentativas + 1):
             try:
-                resultado_json = self.gemini.documento_estruturado(
-                    documento=arquivo,
-                    prompt=self.PROMPT_EXTRACAO,
-                    schema_pydantic=HoleriteExtracaoSchema,
-                    temperature=temperatura
-                )
+                with logger.performance("gemini_extracao_holerite"):
+                    resultado_json = self.gemini.documento_estruturado(
+                        documento=arquivo,
+                        prompt=self.PROMPT_EXTRACAO,
+                        schema_pydantic=HoleriteExtracaoSchema,
+                        temperature=temperatura
+                    )
                 
                 resultado.extracao_json = resultado_json
                 
@@ -294,11 +304,12 @@ class HoleriteProcessador:
             # Passar CPF se disponível, senão passar uma string vazia
             cpf_para_buscar = extracao.funcionario_cpf or ""
 
-            funcionario = self.funcionario_service.criar_ou_buscar_por_documento(
-                documento=cpf_para_buscar,
-                nome=extracao.funcionario_nome,
-                dados_extras={}
-            )
+            with logger.performance("buscar_criar_funcionario"):
+                funcionario = self.funcionario_service.criar_ou_buscar_por_documento(
+                    documento=cpf_para_buscar,
+                    nome=extracao.funcionario_nome,
+                    dados_extras={}
+                )
 
             if funcionario:
                 logger.info(f"[PROCESSADOR] ✓ Funcionário encontrado/criado - Tipo: {type(funcionario)}, ID: {funcionario.get('_id')}")
@@ -310,6 +321,7 @@ class HoleriteProcessador:
                     funcionario_criado = True
                     resultado.funcionario_criado = True
                     resultado.mensagens.append(f"Novo funcionário criado: {extracao.funcionario_nome}")
+                    logger.audit("FUNCIONARIO_CRIADO_AUTOMATICAMENTE", target=f"funcionario:{extracao.funcionario_nome}", changes={"origem": "holerite_ia", "cpf": extracao.funcionario_cpf})
                 else:
                     resultado.mensagens.append(f"Funcionário vinculado: {extracao.funcionario_nome}")
             else:
@@ -391,12 +403,14 @@ class HoleriteProcessador:
             logger.info(f"[PROCESSADOR] ✓ HoleriteMongoDB criado - funcionario_id: {holerite_mongo.funcionario_id}, empresa_id: {holerite_mongo.empresa_id}")
             
             # Inserir no MongoDB
-            holerite_id = self.holerite_service.criar_holerite(holerite_mongo)
+            with logger.performance("salvar_holerite_mongodb"):
+                holerite_id = self.holerite_service.criar_holerite(holerite_mongo)
             
             if holerite_id:
                 resultado.holerite_id = str(holerite_id)
                 resultado.sucesso = True
                 resultado.mensagens.append(f"Holerite salvo: {resultado.holerite_id}")
+                logger.audit("HOLERITE_CRIADO", target=f"holerite:{holerite_id}", changes={"funcionario": extracao.funcionario_nome, "competencia": f"{extracao.mes_referencia:02d}/{extracao.ano_referencia}"})
                 
                 # Atualizar estatísticas
                 self.total_processados += 1

@@ -4,7 +4,10 @@ from pathlib import Path
 
 from src.holerite import Holerite
 from src.services.cache_ocr_service import cache_ocr
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("interface")
 
 from src.interface.core.components import (
     MenuBuilder,

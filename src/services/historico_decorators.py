@@ -7,6 +7,8 @@ Fornece:
 
 Uso:
     from src.services.historico_decorators import registrar_historico, HistoricoMixin
+from src.utils.logger_config_v2 import get_logger
+
     
     class MeuService(HistoricoMixin):
         @registrar_historico(campos_rastrear=["nome", "status", "email"])
@@ -18,9 +20,6 @@ Uso:
 from functools import wraps
 from typing import Optional, Dict, Any, List, Callable
 from datetime import datetime, timezone
-
-from src.utils.logger_config import logger
-
 
 def registrar_historico(
     campos_rastrear: Optional[List[str]] = None,
@@ -51,8 +50,14 @@ def registrar_historico(
         def atualizar(self, object_id: str, alteracoes: dict, **kwargs) -> bool:
             # Apenas atualiza os campos - o decorador cuida do histórico
             resultado = self.colecao.update_one(
-                {"_id": ObjectId(object_id)},
+                {"_id": ObjectId(object_id)}
                 {"$set": alteracoes}
+
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
             )
             return resultado.modified_count > 0
     """
@@ -169,15 +174,6 @@ def registrar_historico(
                 if resultado.modified_count > 0:
                     campos_str = ", ".join([k for k in alteracoes.keys() if k != 'atualizado_em'])
                     logger.info(f"✓ Documento {object_id} atualizado com histórico - campos: {campos_str}")
-                    # Invalidação de cache após escrita bem-sucedida — garante que
-                    # "toda escrita invalida" vige também quando o histórico é registrado
-                    # (o corpo da função decorada não é executado neste caminho).
-                    invalidar = getattr(self, '_invalidar_cache', None)
-                    if callable(invalidar):
-                        try:
-                            invalidar(registro_id=object_id)
-                        except TypeError:
-                            invalidar()
                     return True
                 else:
                     logger.debug(f"Documento {object_id} sem alterações")
@@ -208,6 +204,8 @@ class HistoricoMixin:
     Exemplo:
         class MeuService(HistoricoMixin):
             def __init__(self):
+
+        self.logger = get_logger("historico")
                 self.colecao = ...
                 self.disponivel = True
             
@@ -333,7 +331,6 @@ class HistoricoMixin:
                     "$inc": {"versao": 1}
                 }
             )
-            
             if resultado.modified_count > 0:
                 campos_str = ", ".join([k for k in alteracoes.keys()])
                 logger.info(f"✓ Documento {object_id} atualizado com histórico - campos: {campos_str}")

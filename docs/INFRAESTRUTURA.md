@@ -1,19 +1,19 @@
 # Infraestrutura MS-Automatizar
 
-**Atualizado:** 2026-08-12
+**Atualizado:** 2026-08-01
 **Versão do projeto:** v0.9.8
 
-Documentação da infraestrutura de deploy do MS-Automatizar no servidor de produção.
+Documentação da infraestrutura de deploy do MS-Automatizar no servidor (`servidor-ubuntu-home`).
 
 ---
 
 ## Arquitetura de Deploy
 
-O MS-Automatizar roda como um stack Docker Compose (arquivo `docker-compose.yml`) com 3 serviços, todos na mesma rede interna `ms-automatizar-network`:
+O MS-Automatizar roda como um stack Docker Compose com 3 serviços, todos na mesma rede interna `ms-automatizar-network`:
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                     HOST (servidor de produção)             │
+│                    HOST (servidor-ubuntu-home)              │
 │                                                            │
 │  ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐ │
 │  │   MongoDB    │   │    Redis     │   │  WhatsApp API    │ │
@@ -23,14 +23,12 @@ O MS-Automatizar roda como um stack Docker Compose (arquivo `docker-compose.yml`
 │         │                  │                    │          │
 │         └────── ms-automatizar-network ─────────┘          │
 │                                                            │
-│  Portas publicadas (bind do IP da rede privada):           │
-│   • MongoDB      → ${BIND_IP}:${MONGO_PORT:-27017}          │
-│   • Redis        → ${BIND_IP}:${REDIS_PORT:-6379}           │
-│   • WhatsApp API → ${BIND_IP}:${WHATSAPP_PORT:-3001}        │
+│  Portas publicadas (bind Tailscale 100.82.203.59):         │
+│   • MongoDB      → 100.82.203.59:27018                     │
+│   • Redis        → 100.82.203.59:6380                      │
+│   • WhatsApp API → 100.82.203.59:3001                      │
 └────────────────────────────────────────────────────────────┘
 ```
-
-> **Nota:** os valores de porta mostrados acima são os padrões do `.env.example`. No servidor de produção, o `.env` local define as portas publicadas e o `BIND_IP` da rede privada.
 
 ---
 
@@ -38,9 +36,9 @@ O MS-Automatizar roda como um stack Docker Compose (arquivo `docker-compose.yml`
 
 | Serviço | Imagem | Porta interna | Porta host | Container |
 |---------|--------|---------------|------------|-----------|
-| **mongodb** | `mongo:8.0` | 27017 | `${BIND_IP}:${MONGO_PORT:-27017}` | `ms-automatizar-mongodb` |
-| **redis** | `redis:7.2-alpine` | 6379 | `${BIND_IP}:${REDIS_PORT:-6379}` | `ms-automatizar-redis` |
-| **whatsapp-api** | `aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0` | 3000 | `${BIND_IP}:${WHATSAPP_PORT:-3001}` | `ms-automatizar-whatsapp` |
+| **mongodb** | `mongo:8.0` | 27017 | `100.82.203.59:27018` | `ms-automatizar-mongodb` |
+| **redis** | `redis:7.2-alpine` | 6379 | `100.82.203.59:6380` | `ms-automatizar-redis` |
+| **whatsapp-api** | `aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0` | 3000 | `100.82.203.59:3001` | `ms-automatizar-whatsapp` |
 
 ### Rede e Volumes
 
@@ -53,35 +51,34 @@ O MS-Automatizar roda como um stack Docker Compose (arquivo `docker-compose.yml`
 
 ---
 
-## Acesso (rede privada)
+## Acesso (Tailscale)
 
-O bind das portas é feito no **IP da rede privada** do servidor (definido via `BIND_IP` no `.env`). Por padrão o bind é `127.0.0.1` (só localhost). Para que outros computadores da rede privada/VPN acessem, defina `BIND_IP` com o IP da interface de rede privada do servidor. Isso garante que os serviços **só respondem dentro da rede privada** — computadores de fora da rede não conseguem conectar.
+O bind das portas é feito no **IP Tailscale do servidor** (`100.82.203.59` via `BIND_IP` no `.env`). Isso garante que os serviços **só respondem dentro da rede Tailscale** — computadores de fora da tailnet não conseguem conectar.
 
-**Conexão de qualquer máquina da rede privada** (substitua `IP_DA_REDE_PRIVADA` pelo IP do servidor e `SEU_SERVIDOR` pelo nome de host na sua rede privada):
+**Conexão de qualquer PC da tailnet** (via MagicDNS `servidor-ubuntu-home.tail2f0857.ts.net`):
 
 ```bash
 # MongoDB
-mongosh "mongodb://usuario:SUA_SENHA@IP_DA_REDE_PRIVADA:27018/?authSource=admin"
+mongosh "mongodb://alefsander:***@servidor-ubuntu-home.tail2f0857.ts.net:27018/?authSource=admin"
 
 # Redis
-redis-cli -h IP_DA_REDE_PRIVADA -p 6380 -a 'SUA_SENHA'
+redis-cli -h servidor-ubuntu-home.tail2f0857.ts.net -p 6380 -a 'SUA_SENHA'
 
 # WhatsApp API (basic auth)
-curl -u "usuario:SUA_SENHA" http://IP_DA_REDE_PRIVADA:3001/app/status
+curl -u "alefsander:SUA_SENHA" http://servidor-ubuntu-home.tail2f0857.ts.net:3001/app/status
 ```
 
 ---
 
 ## Configuração (.env do servidor)
 
-Criar um `.env` no diretório onde está o `docker-compose.yml` (NÃO versionar). O modelo com todas as variáveis está em `.env.example`:
+Criar `~/ms_automatizar/.env` (NÃO versionar):
 
 ```env
-# IP de bind das portas — IP da rede privada do servidor (deixe vazio p/ localhost)
-BIND_IP=IP_DA_REDE_PRIVADA
+BIND_IP=100.82.203.59
 
 # MongoDB
-MONGO_ROOT_USERNAME=usuario
+MONGO_ROOT_USERNAME=alefsander
 MONGO_ROOT_PASSWORD=SUA_SENHA
 MONGO_PORT=27018
 
@@ -90,7 +87,7 @@ REDIS_PASSWORD=SUA_SENHA
 REDIS_PORT=6380
 
 # WhatsApp API
-WHATSAPP_BASIC_AUTH=usuario:SUA_SENHA
+WHATSAPP_BASIC_AUTH=alefsander:SUA_SENHA
 WHATSAPP_PORT=3001
 ```
 
@@ -98,19 +95,17 @@ WHATSAPP_PORT=3001
 
 ## Configuração do Projeto (.env local, quem consome)
 
-Quem consome a API (por exemplo, a aplicação rodando em outra máquina da rede privada) usa:
-
 ```env
-MONGO_URI="mongodb://usuario:SUA_SENHA@IP_DA_REDE_PRIVADA:27018/?authSource=admin"
+MONGO_URI="mongodb://alefsander:***@servidor-ubuntu-home.tail2f0857.ts.net:27018/?authSource=admin"
 MONGO_DATABASE_NAME="MS_Automatizar"
 MODO_OPERACAO="mongodb"
 
-REDIS_HOST="IP_DA_REDE_PRIVADA"
+REDIS_HOST="servidor-ubuntu-home.tail2f0857.ts.net"
 REDIS_PORT="6380"
 REDIS_PASSWORD="SUA_SENHA"
 REDIS_ENABLED="true"
 
-WHATSAPP_API_URL="http://IP_DA_REDE_PRIVADA:3001"
+WHATSAPP_API_URL="http://servidor-ubuntu-home.tail2f0857.ts.net:3001"
 WHATSAPP_API_KEY=""
 ```
 
@@ -122,11 +117,11 @@ WHATSAPP_API_KEY=""
 
 ```bash
 cd ~/ms_automatizar
-docker compose up -d          # subir tudo
-docker compose ps             # status
-docker compose logs -f        # logs em tempo real
-docker compose logs mongodb   # log de um serviço
-docker compose down           # parar (mantém volumes)
+sudo docker compose up -d          # subir tudo
+sudo docker compose ps             # status
+sudo docker compose logs -f        # logs em tempo real
+sudo docker compose logs mongodb   # log de um serviço
+sudo docker compose down           # parar (mantém volumes)
 ```
 
 ---
@@ -138,33 +133,33 @@ docker compose down           # parar (mantém volumes)
 O dump (formato `mongodump`) fica em `backup_mongo/MS_Automatizar/` no repositório.
 
 ```bash
-mongorestore --uri="mongodb://usuario:SUA_SENHA@IP_DA_REDE_PRIVADA:27018/?authSource=admin" \
+mongorestore --uri="mongodb://alefsander:***@100.82.203.59:27018/?authSource=admin" \
   --db=MS_Automatizar \
   --drop \
   backup_mongo/MS_Automatizar
 ```
 
-> ⚠️ O dump de produção contém **dados pessoais** (CPFs, PIS). Não publique backups reais — mantenha-os fora do repositório ou em versão anonimizada/descartável.
-
 ### Coleções
 
-| Coleção | Descrição |
-|---------|-----------|
-| funcionarios | Funcionários |
-| folha_de_ponto | Folhas de ponto |
-| grupos_whatsapp | Cache de grupos |
-| envios_folhas_de_ponto | Registro de envios |
-| cache_ocr | Cache OCR |
-| diretorios | Diretórios |
-| contratos | Contratos |
-| funcoes | Funções/cargos |
-| holerites | Holerites |
-| horarios | Horários |
-| feriados | Feriados |
-| templates_mensagens | Templates |
-| empresas | Empresas |
-| contatos_funcionarios | Contatos |
-| envios_holerites | Envios holerites |
+| Coleção | Docs | Descrição |
+|---------|------|-----------|
+| funcionarios | 580 | Funcionários |
+| folha_de_ponto | 4.691 | Folhas de ponto |
+| grupos_whatsapp | 226 | Cache de grupos |
+| envios_folhas_de_ponto | 208 | Registro de envios |
+| cache_ocr | 552 | Cache OCR |
+| diretorios | 57 | Diretórios |
+| contratos | 39 | Contratos |
+| funcoes | 34 | Funções/cargos |
+| holerites | 27 | Holerites |
+| horarios | 26 | Horários |
+| feriados | 17 | Feriados |
+| templates_mensagens | 6 | Templates |
+| empresas | 3 | Empresas |
+| contatos_funcionarios | 0 | Contatos |
+| envios_holerites | 0 | Envios holerites |
+
+⚠️ Contém **dados pessoais** (CPFs, PIS). Repositório deve ser privado.
 
 ---
 
@@ -174,7 +169,7 @@ mongorestore --uri="mongodb://usuario:SUA_SENHA@IP_DA_REDE_PRIVADA:27018/?authSo
 
 A atualização v8 → v9 já foi aplicada — ver [UPGRADE_GOWA_9.md](UPGRADE_GOWA_9.md) com a análise completa das mudanças v8 → v9 e os ajustes feitos no código. Na v9 o dashboard embutido foi removido (gowa-ui baixado em runtime); no deploy puro de API usamos `APP_UI_ENABLED=false` e `APP_UI_AUTO_UPDATE=false`.
 
-O pareamento do WhatsApp é feito pelo dashboard em `http://IP_DA_REDE_PRIVADA:3001` (login com `WHATSAPP_BASIC_AUTH`) ou via API.
+O pareamento do WhatsApp é feito pelo dashboard em `http://100.82.203.59:3001` (login com `WHATSAPP_BASIC_AUTH`) ou via API.
 
 ### Estado esperado no primeiro boot
 

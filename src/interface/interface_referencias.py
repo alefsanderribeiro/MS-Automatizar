@@ -2,6 +2,11 @@
 Interface interativa para gerenciar Referências (Contratos, Horários, Funções, Diretórios, Feriados)
 """
 
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("interface")
+
 from src.comandos.referencias import (
     listar_contratos, adicionar_contrato_interativo, inativar_contrato,
     listar_horarios, adicionar_horario_interativo, inativar_horario,
@@ -30,8 +35,6 @@ from src.interface.core.components import (
     pedir_inteiro,
 )
 from src.interface.core.theme import console, ICONES
-from src.utils.logger_config import logger
-
 
 def Interface_Referencias():
     """Interface principal de Referências"""
@@ -840,7 +843,7 @@ def _importar_feriados_excel():
             from scripts.migrar_feriados import migrar_feriados_excel
 
         # Caminho padrão do Excel
-        caminho_padrao = Path(__file__).parent.parent / "data" / "input" / "folha_ponto_dados.xlsx"
+        caminho_padrao = Path(__file__).parent.parent / "data" / "input" / "30.07.25 - 10.09 - Folha de Ponto - Alefe - Dados.xlsx"
 
         exibir_cabecalho("Importar Feriados do Excel", ICONES["excel"])
         console.print(f"Arquivo padrao: {caminho_padrao.name}")

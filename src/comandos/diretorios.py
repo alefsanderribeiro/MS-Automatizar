@@ -8,8 +8,11 @@ from bson import ObjectId
 from src.services.diretorio_service import DiretorioService
 from src.services.contrato_service import ContratoService
 from src.models.diretorio_models import DiretorioBuilder, StatusDiretorio
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
 
+
+# Logger do módulo
+logger = get_logger("comando")
 
 # ============================================================================
 # COMANDOS DE DIRETÓRIOS
@@ -159,6 +162,7 @@ def adicionar_diretorio_interativo() -> None:
         if resultado:
             logger.info(f"\n✅ Diretório '{nome}' criado com sucesso!")
             logger.info(f"   ID: {resultado}")
+            logger.audit("DIRETORIO_CRIADO", target=f"diretorio:{resultado}", changes={"nome": nome})
         else:
             logger.error(f"❌ Erro ao criar diretório '{nome}'")
     
@@ -265,6 +269,7 @@ def inativar_diretorio(diretorio_id: str) -> None:
     
     if sucesso:
         logger.info(f"✅ Diretório '{nome}' inativado com sucesso!")
+        logger.audit("DIRETORIO_INATIVADO", target=f"diretorio:{diretorio_id}", changes={"nome": nome})
     else:
         logger.error(f"❌ Erro ao inativar diretório '{nome}'")
 

@@ -17,9 +17,10 @@ from datetime import datetime, timezone
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.utils.retry_utils import retry_com_log
 from src.utils.telefone_utils import normalizar_telefone, validar_telefone
+from src.utils.logger_config_v2 import get_logger
+
 
 # Tentativa de importação de requests
 try:
@@ -57,6 +58,8 @@ class WhatsAppService:
     DELAY_APOS_ERRO = 3.0       # Delay adicional após erro
     
     def __init__(self):
+
+        self.logger = get_logger("whatsapp")
         """Inicializa configurações do WhatsApp"""
         self._carregar_configuracoes()
     
@@ -720,7 +723,7 @@ class WhatsAppService:
             Exemplo: [
                 {
                     "id": "WhatsApp-Alefe",
-                    "display_name": "Operador MS",
+                    "display_name": "Alefsander Ribeiro",
                     "state": "logged_in",
                     "jid": "556993451333@s.whatsapp.net",
                     "created_at": "2026-01-29T19:50:40.864764866Z"

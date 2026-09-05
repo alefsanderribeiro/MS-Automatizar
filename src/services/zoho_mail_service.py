@@ -19,8 +19,9 @@ import dotenv
 import re
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.utils.retry_utils import retry_com_log
+from src.utils.logger_config_v2 import get_logger
+
 
 # Tentativa de importação de requests
 try:
@@ -146,6 +147,8 @@ class ZohoMailService:
     REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}/callback"
     
     def __init__(self):
+
+        self.logger = get_logger("email")
         """Inicializa configurações do Zoho Mail"""
         self.env_path = caminho_dotenv()
         # Inicializar atributos ANTES de carregar configurações

@@ -5,12 +5,13 @@ import io
 import httpx
 import base64
 from abc import ABC
-from src.utils.logger_config import logger
 from src.utils.dotenv_path import caminho_dotenv
 import dotenv
 from google import genai
 from google.genai import types
 from mistralai import Mistral
+from src.utils.logger_config_v2 import get_logger
+
 
 
 
@@ -18,12 +19,11 @@ class ServiceBaseGemini(ABC):
     """Classe base abstrata para serviços de IA do Gemini"""
     
     def __init__(self, **kwargs):
+
+        self.logger = get_logger("ia")
         self._api_key = dotenv.get_key(caminho_dotenv(), "KEY_API_GEMINI")
         self._sdk_disponivel = False
-        # Cliente criado sob demanda em _configurar_sdk(): só é instanciado quando
-        # há API key configurada. Sem key, _client fica None e o serviço opera em
-        # modo "não configurado" (estrutura preservada para implementação futura).
-        self._client = None
+        self._client = genai.Client(api_key=self._api_key)
         self._model = None
         self._default_config_kwargs = kwargs  # Armazena os kwargs padrão
         self._configurado = self._configurar_sdk()
@@ -31,10 +31,8 @@ class ServiceBaseGemini(ABC):
     def _configurar_sdk(self) -> bool:
         if not self.api_key:
             logger.warning(f"IA: API Key não configurada para {self.__class__.__name__}")
-            self._client = None
             return False
         try:
-            self._client = genai.Client(api_key=self._api_key)
             self._sdk_disponivel = True
             return True
         except ImportError:

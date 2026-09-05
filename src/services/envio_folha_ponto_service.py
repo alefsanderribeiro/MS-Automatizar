@@ -12,12 +12,12 @@ from datetime import datetime, timezone
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.models.envio_folha_ponto_models import (
     TipoEnvioEnum,
     StatusEnvioEnum,
     EnvioFolhaPontoMongoDB,
 )
+from src.utils.logger_config_v2 import get_logger
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.mongodb_connection import MongoDBConnectionPool
 
@@ -29,6 +29,9 @@ try:
     MONGODB_DISPONIVEL = True
 except ImportError:
     MONGODB_DISPONIVEL = False
+
+logger = get_logger("envio")
+if not MONGODB_DISPONIVEL:
     logger.warning("PyMongo não instalado - EnvioFolhaPontoService ficará limitado")
 
 
@@ -146,6 +149,24 @@ class EnvioFolhaPontoService(HistoricoMixin):
             doc = envio.model_dump()
             
             resultado = self.colecao.insert_one(doc)
+
+            
+            if resultado and resultado.inserted_id:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_CRIADO",
+
+            
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+            
+                    changes={'dados': str(doc)[:200]}
+
+            
+                )
             
             logger.info(
                 f"✓ Envio registrado: {dados.get('tipo_envio')} para {dados.get('local_contrato_polo')} "
@@ -301,6 +322,13 @@ class EnvioFolhaPontoService(HistoricoMixin):
                     }
                 }
             )
+            
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             return resultado.modified_count > 0
         except Exception as e:
             logger.error(f"Erro ao incrementar tentativa: {e}")
@@ -341,6 +369,12 @@ class EnvioFolhaPontoService(HistoricoMixin):
                 }
             )
             
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             if resultado.modified_count > 0:
                 logger.info(f"✓ Envio {envio_id} marcado como enviado ({len(arquivos_enviados)} arquivos)")
             
@@ -383,6 +417,12 @@ class EnvioFolhaPontoService(HistoricoMixin):
                 }
             )
             
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             if resultado.modified_count > 0:
                 logger.warning(f"⚠ Envio {envio_id} marcado com erro: {erro_detalhes}")
             
@@ -427,6 +467,12 @@ class EnvioFolhaPontoService(HistoricoMixin):
                 }
             )
             
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             if resultado.modified_count > 0:
                 logger.warning(
                     f"⚠ Envio {envio_id} parcial: {len(enviados)} enviados, {len(com_erro)} com erro"

@@ -9,8 +9,11 @@ ao invés de criar conexões diretas com o MongoDB.
 """
 
 from typing import Optional, Dict, Any, List
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
 
+
+# Logger do módulo
+logger = get_logger("mongodb")
 
 # Cache dos serviços para evitar reinicialização
 _services_cache = {}

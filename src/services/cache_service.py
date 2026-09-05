@@ -23,8 +23,10 @@ import json
 import time
 from typing import Any, Dict, List, Optional
 from threading import Lock
+from src.utils.logger_config_v2 import get_logger
 
-from src.utils.logger_config import logger
+# Inicializar logger
+logger = get_logger("cache")
 
 # Tentativa de importar Redis
 try:
@@ -71,6 +73,8 @@ class CacheService:
         return cls._instance
     
     def __init__(self):
+
+        self.logger = get_logger("cache")
         """Inicializa o serviço de cache (apenas uma vez)"""
         if self._initialized:
             return

@@ -7,7 +7,6 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 import dotenv
 
-from src.utils.logger_config import logger
 from src.utils.dotenv_path import caminho_dotenv
 from src.services.mongodb_connection import MongoDBConnectionPool, retry_mongodb, medir_tempo
 from src.models.contato_funcionario_models import (
@@ -16,6 +15,7 @@ from src.models.contato_funcionario_models import (
     StatusContato,
     OrigemContato
 )
+from src.utils.logger_config_v2 import get_logger
 
 try:
     from pymongo import ASCENDING, DESCENDING
@@ -35,6 +35,8 @@ class ContatoFuncionarioService:
     """
 
     def __init__(self, collection_name: str = "contatos_funcionarios"):
+
+        self.logger = get_logger("contato")
         """
         Inicializa serviço de contatos usando pool centralizado.
 
@@ -169,7 +171,24 @@ class ContatoFuncionarioService:
                 doc['atualizado_em'] = datetime.now(timezone.utc)
             
             resultado = self.colecao.insert_one(doc)
+
             
+            if resultado and resultado.inserted_id:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_CRIADO",
+
+            
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+            
+                    changes={'dados': str(doc)[:200]}
+
+            
+                )
             if resultado.inserted_id:
                 logger.debug(f"✓ Contato criado: {resultado.inserted_id}")
                 return resultado.inserted_id
@@ -221,7 +240,6 @@ class ContatoFuncionarioService:
                 upsert=True,
                 return_document=True
             )
-            
             if resultado:
                 return resultado['_id']
             return None
@@ -424,6 +442,13 @@ class ContatoFuncionarioService:
                 {"$set": {"preferencial": True, "atualizado_em": datetime.now(timezone.utc)}}
             )
             
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
+            
             return resultado.modified_count > 0
         except Exception as e:
             logger.error(f"Erro ao marcar preferencial: {e}")
@@ -450,13 +475,19 @@ class ContatoFuncionarioService:
         try:
             resultado = self.colecao.update_one(
                 {"_id": ObjectId(contato_id)},
-                {
-                    "$set": {
-                        "status": novo_status.value,
-                        "atualizado_em": datetime.now(timezone.utc)
-                    }
-                }
+                {"$set": {
+                    "status": novo_status.value,
+                    "atualizado_em": datetime.now(timezone.utc)
+                }}
             )
+            
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
+            
             return resultado.modified_count > 0
         except Exception as e:
             logger.error(f"Erro ao atualizar status: {e}")
@@ -495,6 +526,13 @@ class ContatoFuncionarioService:
                 {"_id": ObjectId(contato_id)},
                 update
             )
+            
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             return resultado.modified_count > 0
         except Exception as e:
             logger.error(f"Erro ao registrar envio: {e}")

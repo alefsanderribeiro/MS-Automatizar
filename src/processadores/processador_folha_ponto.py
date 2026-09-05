@@ -20,6 +20,11 @@ import json
 from bson import ObjectId
 from src.services.analise_ai_service import GeminiService
 from src.services import FuncionarioService, FolhaDePontoService, EmpresaService
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("folha_ponto")
+
 from src.models.folha_de_ponto_models import (
     FolhaDePontoMongoDB,
     FolhaDePontoData,
@@ -28,7 +33,6 @@ from src.models.folha_de_ponto_models import (
     TipoDia,
     StatusFolhaPonto,
 )
-from src.utils.logger_config import logger
 from src.utils.funcionario_sanitizador import (
     SanitizadorFuncionario,
     ConstrutorFuncionarioIncompleto,
@@ -156,79 +160,6 @@ def calcular_total_horas(entrada: Optional[str], saida: Optional[str],
     
     except Exception:
         return None
-
-
-def _extrair_valor_dia(dia, campo: str):
-    """Extrai um campo de um dia que pode ser dict ou objeto Pydantic/BaseModel."""
-    if isinstance(dia, dict):
-        return dia.get(campo)
-    return getattr(dia, campo, None)
-
-
-def recalcular_totais_folha(dias) -> Dict[str, Any]:
-    """
-    Recalcula as totalizações de uma folha de ponto a partir da lista de dias.
-
-    É o MESMO cálculo usado na geração/armazenamento da IA (total_horas_mes,
-    total_faltas, total_feriados, total_finais_semana), extraído para ser
-    reutilizado na edição de folha sem duplicar a lógica.
-
-    Aceita dias como listas de dicts (formato MongoDB) ou de ``DiaFolhaPonto``.
-
-    Args:
-        dias: Lista de dias da folha
-
-    Returns:
-        Dict com: total_horas_mes (HH:MM), total_faltas, total_feriados,
-        total_finais_semana
-    """
-    total_horas_mes_minutos = 0
-    total_faltas = 0
-    total_feriados = 0
-    total_finais_semana = 0
-
-    for dia in dias or []:
-        tipo_dia = _extrair_valor_dia(dia, "tipo_dia")
-        # Normalizar para comparação (pode ser str do enum ou valor)
-        if hasattr(tipo_dia, "value"):
-            tipo_dia = tipo_dia.value
-        tipo_dia_str = str(tipo_dia or "").upper()
-
-        # Feriado
-        if tipo_dia_str == "FERIADO":
-            total_feriados += 1
-
-        # Finais de semana
-        dia_semana = _extrair_valor_dia(dia, "dia_semana")
-        if hasattr(dia_semana, "value"):
-            dia_semana = dia_semana.value
-        if tipo_dia_str in ("SÁBADO", "SABADO", "DOMINGO"):
-            total_finais_semana += 1
-        elif dia_semana and str(dia_semana).upper() in ["SÁBADO", "SABADO", "DOMINGO"]:
-            total_finais_semana += 1
-
-        # Faltas
-        if tipo_dia_str == "FALTA":
-            total_faltas += 1
-
-        # Horas trabalhadas
-        total_horas = _extrair_valor_dia(dia, "total_horas_trabalhadas")
-        if total_horas:
-            try:
-                partes = str(total_horas).split(':')
-                if len(partes) == 2:
-                    total_horas_mes_minutos += (int(partes[0]) * 60 + int(partes[1]))
-            except Exception:
-                pass
-
-    total_horas_mes = f"{total_horas_mes_minutos // 60:02d}:{total_horas_mes_minutos % 60:02d}"
-
-    return {
-        "total_horas_mes": total_horas_mes,
-        "total_faltas": total_faltas,
-        "total_feriados": total_feriados,
-        "total_finais_semana": total_finais_semana,
-    }
 
 
 # ==================== MODELO EXTRATOR (Structured Output) ====================
@@ -379,9 +310,12 @@ class ProcessadorFolhaPonto:
         resultado = ProcessarResultado(arquivo_origem=str(arquivo_pdf))
         tempo_inicio = time.time()
         
+        # Correlation ID para rastreamento ponta-a-ponta
+        with logger.correlation("processar_folha_ponto") as corr_id:
+            logger.info(f"Iniciando processamento: {arquivo_pdf.name}", correlation_id=corr_id)
+        
         try:
             # ==================== ETAPA 1: Validação ====================
-            logger.info(f"Iniciando processamento: {arquivo_pdf.name}")
             resultado.mensagens.append(f"Arquivo: {arquivo_pdf.name}")
             
             if not self._validar_arquivo(arquivo_pdf, resultado):
@@ -505,12 +439,13 @@ class ProcessadorFolhaPonto:
                     resultado.prompt_gemini = prompt
                 
                 # Chamar Gemini com Structured Output
-                resultado_json = self.gemini.documento_estruturado(
-                    documento=arquivo,
-                    prompt=prompt,
-                    schema_pydantic=ExtratorFolhaPonto,
-                    temperature=temperature,
-                )
+                with logger.performance("gemini_extracao_folha_ponto"):
+                    resultado_json = self.gemini.documento_estruturado(
+                        documento=arquivo,
+                        prompt=prompt,
+                        schema_pydantic=ExtratorFolhaPonto,
+                        temperature=temperature,
+                    )
                 
                 # Salvar resposta bruta
                 resultado.resposta_bruta_gemini = resultado_json
@@ -878,40 +813,41 @@ class ProcessadorFolhaPonto:
             doc_mongodb = folha_completa.to_mongo_insert()
             
             # Inserir em MongoDB com upsert se houver duplicata
-            try:
-                id_documento = self.folha_service.colecao.insert_one(doc_mongodb).inserted_id
-                logger.info(f" Nova folha inserida: ID {id_documento}")
-            except Exception as insert_error:
-                # Se erro de chave duplicada, fazer upsert
-                if "E11000" in str(insert_error) or "duplicate key" in str(insert_error):
-                    logger.debug(f"Folha já existe para este período, atualizando...")
-                    
-                    # Filtro pela chave composta
-                    filtro = {
-                        "funcionario_id": funcionario_oid,
-                        "empresa_id": empresa_oid,
-                        "mes_referencia": extracao.mes_ano or datetime.now().strftime("%Y-%m"),
-                    }
-                    
-                    # Remover _id para não tentar atualizar campo imutável
-                    doc_update = doc_mongodb.copy()
-                    doc_update.pop("_id", None)
-                    
-                    # Fazer upsert
-                    resultado_upsert = self.folha_service.colecao.update_one(
-                        filtro,
-                        {"$set": doc_update},
-                        upsert=True
-                    )
-                    
-                    # Buscar documento atualizado
-                    doc_existente = self.folha_service.colecao.find_one(filtro)
-                    id_documento = doc_existente.get("_id") if doc_existente else resultado_upsert.upserted_id
-                    
-                    tempo_mongodb = time.time() - tempo_inicio
-                    logger.info(f" Folha atualizada via upsert (ID: {id_documento}, {tempo_mongodb:.2f}s)")
-                else:
-                    raise insert_error
+            with logger.performance("salvar_folha_mongodb"):
+                try:
+                    id_documento = self.folha_service.colecao.insert_one(doc_mongodb).inserted_id
+                    logger.info(f" Nova folha inserida: ID {id_documento}")
+                except Exception as insert_error:
+                    # Se erro de chave duplicada, fazer upsert
+                    if "E11000" in str(insert_error) or "duplicate key" in str(insert_error):
+                        logger.debug(f"Folha já existe para este período, atualizando...")
+                        
+                        # Filtro pela chave composta
+                        filtro = {
+                            "funcionario_id": funcionario_oid,
+                            "empresa_id": empresa_oid,
+                            "mes_referencia": extracao.mes_ano or datetime.now().strftime("%Y-%m"),
+                        }
+                        
+                        # Remover _id para não tentar atualizar campo imutável
+                        doc_update = doc_mongodb.copy()
+                        doc_update.pop("_id", None)
+                        
+                        # Fazer upsert
+                        resultado_upsert = self.folha_service.colecao.update_one(
+                            filtro,
+                            {"$set": doc_update},
+                            upsert=True
+                        )
+                        
+                        # Buscar documento atualizado
+                        doc_existente = self.folha_service.colecao.find_one(filtro)
+                        id_documento = doc_existente.get("_id") if doc_existente else resultado_upsert.upserted_id
+                        
+                        tempo_mongodb = time.time() - tempo_inicio
+                        logger.info(f" Folha atualizada via upsert (ID: {id_documento}, {tempo_mongodb:.2f}s)")
+                    else:
+                        raise insert_error
             
             # ==================== ATUALIZAR RELACIONAMENTOS ====================
             # Adicionar empresa ao funcionário (em empresas_ids como ObjectId)

@@ -13,7 +13,6 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 import dotenv
 
-from src.utils.logger_config import logger
 from src.utils.dotenv_path import caminho_dotenv
 from src.services.mongodb_connection import MongoDBConnectionPool, retry_mongodb, medir_tempo
 
@@ -24,6 +23,7 @@ from src.services.folha_ponto_service import (
     folha_de_ponto_service,
     MONGODB_DISPONIVEL
 )
+from src.utils.logger_config_v2 import get_logger
 from src.services.funcionario_service import (
     FuncionarioService,
     funcionario_service
@@ -59,6 +59,8 @@ class CacheOCRMongoDB:
     """
     
     def __init__(self, collection_name: str = "cache_ocr"):
+
+        self.logger = get_logger("mongodb")
         """
         Inicializa serviço de cache OCR usando pool centralizado.
 
@@ -223,6 +225,18 @@ class CacheOCRMongoDB:
                 {"$set": documento},
                 upsert=True
             )
+
+            if resultado and resultado.modified_count > 0:
+
+                self.logger.audit(
+
+                    action="REGISTRO_ATUALIZADO",
+
+                    target=f"{self.collection_name}",
+
+                    changes={'operacao': 'update'}
+
+                )
             
             if resultado.upserted_id or resultado.modified_count > 0:
                 logger.info(

@@ -6,7 +6,8 @@ as configuracoes do sistema atraves do menu principal.
 """
 
 from typing import Optional
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
 from src.services.config_service import (
     ConfigService,
     TipoConfiguracao,
