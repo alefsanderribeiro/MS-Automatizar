@@ -67,6 +67,8 @@ class DiretorioService(HistoricoMixin):
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
         
+        self.logger = get_logger("diretorio")
+        
         # Cache em memória para diretórios (chave: ObjectId string, valor: documento)
         self._cache_diretorios: Dict[str, Dict[str, Any]] = {}
         # Cache por contrato_id para busca rápida
@@ -275,17 +277,8 @@ class DiretorioService(HistoricoMixin):
             else:
                 filtro = {"nome_normalizado": {"$regex": nome_normalizado, "$options": "i"}}
             
-            documento = self.colecao.find_one(filtro)
-            
-            if documento:
-                # Adicionar ao cache
-                diretorio_id = str(documento.get("_id"))
-                self._cache_diretorios[diretorio_id] = documento
-                logger.debug(f"✓ Diretório encontrado: {documento.get('nome')}")
-                return documento
-            else:
-                logger.debug(f"✗ Diretório não encontrado: {nome_diretorio}")
-                return None
+            with self.logger.performance("buscar_por_nome"):
+                documento = self.colecao.find_one(filtro)
         
         except Exception as e:
             logger.error(f"Erro ao buscar diretório por nome: {e}")
@@ -319,7 +312,8 @@ class DiretorioService(HistoricoMixin):
                 logger.warning(f"ID inválido para conversão: {diretorio_id}")
                 return None
             
-            documento = self.colecao.find_one({"_id": obj_id})
+            with self.logger.performance("buscar_por_id"):
+                documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
                 # Adicionar ao cache
@@ -362,7 +356,8 @@ class DiretorioService(HistoricoMixin):
                 logger.warning(f"contrato_id inválido para conversão: {contrato_id}")
                 return None
             
-            documento = self.colecao.find_one({"contrato_id": obj_id})
+            with self.logger.performance("buscar_por_contrato_id"):
+                documento = self.colecao.find_one({"contrato_id": obj_id})
             
             if documento:
                 # Adicionar aos caches
@@ -424,14 +419,16 @@ class DiretorioService(HistoricoMixin):
             return {"dados": [], "total": 0, "skip": skip, "limit": limit}
         
         try:
-            total = self.colecao.count_documents({})
+            with self.logger.performance("listar_todos_contar"):
+                total = self.colecao.count_documents({})
             
-            diretorios = list(
-                self.colecao.find({})
-                .sort("ordem", ASCENDING)
-                .skip(skip)
-                .limit(limit)
-            )
+            with self.logger.performance("listar_todos_buscar"):
+                diretorios = list(
+                    self.colecao.find({})
+                    .sort("ordem", ASCENDING)
+                    .skip(skip)
+                    .limit(limit)
+                )
             
             paginas = (total + limit - 1) // limit if limit > 0 else 1
             pagina_atual = (skip // limit) + 1 if limit > 0 else 1
@@ -462,10 +459,11 @@ class DiretorioService(HistoricoMixin):
         
         try:
             # Buscar por status='ativo' (campo do modelo DiretorioMongoDB)
-            diretorios = list(
-                self.colecao.find({"status": StatusDiretorio.ATIVO.value})
-                .sort("ordem", ASCENDING)
-            )
+            with self.logger.performance("listar_ativos"):
+                diretorios = list(
+                    self.colecao.find({"status": StatusDiretorio.ATIVO.value})
+                    .sort("ordem", ASCENDING)
+                )
             logger.debug(f"✓ {len(diretorios)} diretórios ativos encontrados")
             return diretorios
         except Exception as e:
@@ -792,11 +790,12 @@ class DiretorioService(HistoricoMixin):
             return {'status': 'MongoDB indisponível', 'total_diretorios': 0}
         
         try:
-            total = self.colecao.count_documents({})
-            ativos = self.colecao.count_documents({"status": StatusDiretorio.ATIVO.value})
-            inativos = self.colecao.count_documents({"status": StatusDiretorio.INATIVO.value})
-            auto_criados = self.colecao.count_documents({"auto_criado": True})
-            com_contrato = self.colecao.count_documents({"contrato_id": {"$ne": None}})
+            with self.logger.performance("obter_estatisticas"):
+                total = self.colecao.count_documents({})
+                ativos = self.colecao.count_documents({"status": StatusDiretorio.ATIVO.value})
+                inativos = self.colecao.count_documents({"status": StatusDiretorio.INATIVO.value})
+                auto_criados = self.colecao.count_documents({"auto_criado": True})
+                com_contrato = self.colecao.count_documents({"contrato_id": {"$ne": None}})
             
             stats = {
                 'status': 'OK',

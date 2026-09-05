@@ -349,7 +349,8 @@ class FuncionarioService(HistoricoMixin):
                     )
                     
                     # Buscar o documento (novo ou existente) para pegar o ID
-                    doc_encontrado = self.colecao.find_one(filtro)
+                    with self.logger.performance("criar_ou_buscar_apos_upsert"):
+                        doc_encontrado = self.colecao.find_one(filtro)
                     
                     if doc_encontrado:
                         # Retornar o ObjectId em string
@@ -416,7 +417,8 @@ class FuncionarioService(HistoricoMixin):
                     # Se falhar, manter como string para retrocompatibilidade
                     pass
             
-            doc = self.colecao.find_one({"_id": funcionario_id}, {"_id": 0})
+            with self.logger.performance("buscar_por_id"):
+                doc = self.colecao.find_one({"_id": funcionario_id}, {"_id": 0})
             if doc:
                 logger.debug(f"✓ Funcionário encontrado: {doc.get('nome')}")
             return doc
@@ -444,7 +446,8 @@ class FuncionarioService(HistoricoMixin):
             else:
                 obj_id = object_id
             
-            doc = self.colecao.find_one({"_id": obj_id})
+            with self.logger.performance("buscar_por_objeto_id"):
+                doc = self.colecao.find_one({"_id": obj_id})
             if doc:
                 logger.debug(f"✓ Funcionário encontrado por ObjectId: {doc.get('nome')}")
             return doc
@@ -478,14 +481,15 @@ class FuncionarioService(HistoricoMixin):
             nfkd = unicodedata.normalize('NFKD', nome)
             nome_normalizado = ''.join([c for c in nfkd if not unicodedata.combining(c)]).lower()
             
-            doc = self.colecao.find_one(
-                {
-                    "nome_normalizado": nome_normalizado,
-                    "lotacao": lotacao,
-                    "contrato": contrato
-                }
-                # Incluir _id por padrão para referência
-            )
+            with self.logger.performance("buscar_por_nome_lotacao_contrato"):
+                doc = self.colecao.find_one(
+                    {
+                        "nome_normalizado": nome_normalizado,
+                        "lotacao": lotacao,
+                        "contrato": contrato
+                    }
+                    # Incluir _id por padrão para referência
+                )
             
             if doc:
                 logger.debug(f"✓ Funcionário encontrado (busca exata): {doc.get('nome')}")
@@ -518,7 +522,8 @@ class FuncionarioService(HistoricoMixin):
             nfkd = unicodedata.normalize('NFKD', nome)
             nome_normalizado = ''.join([c for c in nfkd if not unicodedata.combining(c)]).lower()
             
-            cursor = self.colecao.find({"nome_normalizado": nome_normalizado})
+            with self.logger.performance("buscar_todos_por_nome"):
+                cursor = self.colecao.find({"nome_normalizado": nome_normalizado})
             funcionarios = list(cursor)
             
             if funcionarios:
@@ -556,12 +561,13 @@ class FuncionarioService(HistoricoMixin):
             nfkd = unicodedata.normalize('NFKD', nome)
             nome_normalizado = ''.join([c for c in nfkd if not unicodedata.combining(c)]).lower()
             
-            doc = self.colecao.find_one(
-                {
-                    "nome_normalizado": nome_normalizado,
-                    "lotacao": lotacao
-                }
-            )
+            with self.logger.performance("buscar_por_nome_lotacao"):
+                doc = self.colecao.find_one(
+                    {
+                        "nome_normalizado": nome_normalizado,
+                        "lotacao": lotacao
+                    }
+                )
             
             if doc:
                 logger.debug(f"✓ Funcionário encontrado (nome+lotação): {doc.get('nome')}")
@@ -602,14 +608,15 @@ class FuncionarioService(HistoricoMixin):
             nome_busca = ''.join([c for c in nfkd if not unicodedata.combining(c)]).lower()
             
             # Buscar todos com lotação e contrato
-            funcionarios = list(self.colecao.find(
-                {
-                    "lotacao": lotacao,
-                    "contrato": contrato,
-                    "status": StatusFuncionario.ATIVO.value
-                },
-                {"_id": 0}
-            ))
+            with self.logger.performance("buscar_similar_listar"):
+                funcionarios = list(self.colecao.find(
+                    {
+                        "lotacao": lotacao,
+                        "contrato": contrato,
+                        "status": StatusFuncionario.ATIVO.value
+                    },
+                    {"_id": 0}
+                ))
             
             if not funcionarios:
                 logger.debug(f"Nenhum funcionário ativo encontrado em {lotacao}/{contrato}")
@@ -658,10 +665,11 @@ class FuncionarioService(HistoricoMixin):
             return []
         
         try:
-            docs = list(self.colecao.find(
-                {"empresa": empresa, "status": StatusFuncionario.ATIVO.value},
-                {"_id": 0}
-            ).sort("nome", 1))
+            with self.logger.performance("listar_por_empresa"):
+                docs = list(self.colecao.find(
+                    {"empresa": empresa, "status": StatusFuncionario.ATIVO.value},
+                    {"_id": 0}
+                ).sort("nome", 1))
             
             logger.debug(f"✓ {len(docs)} funcionários encontrados para empresa: {empresa}")
             return docs
@@ -683,10 +691,11 @@ class FuncionarioService(HistoricoMixin):
             return []
         
         try:
-            docs = list(self.colecao.find(
-                {"lotacao": lotacao, "status": StatusFuncionario.ATIVO.value},
-                {"_id": 0}
-            ).sort("nome", 1))
+            with self.logger.performance("listar_por_lotacao"):
+                docs = list(self.colecao.find(
+                    {"lotacao": lotacao, "status": StatusFuncionario.ATIVO.value},
+                    {"_id": 0}
+                ).sort("nome", 1))
             
             logger.debug(f"✓ {len(docs)} funcionários encontrados para lotação: {lotacao}")
             return docs
@@ -717,7 +726,8 @@ class FuncionarioService(HistoricoMixin):
             doc_normalizado = documento.replace(".", "").replace("-", "").strip()
             logger.debug(f"Buscando funcionário por CPF normalizado: {doc_normalizado}")
 
-            funcionario = self.colecao.find_one({"cpf": doc_normalizado})
+            with self.logger.performance("buscar_por_documento"):
+                funcionario = self.colecao.find_one({"cpf": doc_normalizado})
             if funcionario:
                 logger.info(f"✓ Funcionário encontrado por documento: {doc_normalizado} - ID: {funcionario.get('_id')}")
                 return funcionario
@@ -745,16 +755,17 @@ class FuncionarioService(HistoricoMixin):
             return []
         
         try:
-            docs = list(self.colecao.find(
-                {
-                    "status_cadastro": {
-                        "$in": [
-                            StatusCadastro.INCOMPLETO.value,
-                            StatusCadastro.PENDENTE_REVISAO.value
-                        ]
+            with self.logger.performance("listar_incompletos"):
+                docs = list(self.colecao.find(
+                    {
+                        "status_cadastro": {
+                            "$in": [
+                                StatusCadastro.INCOMPLETO.value,
+                                StatusCadastro.PENDENTE_REVISAO.value
+                            ]
+                        }
                     }
-                }
-            ).sort("nome", 1).skip(skip).limit(limit))
+                ).sort("nome", 1).skip(skip).limit(limit))
             
             logger.debug(f"✓ {len(docs)} funcionários incompletos encontrados")
             return docs
@@ -821,7 +832,8 @@ class FuncionarioService(HistoricoMixin):
             # Buscar por nome normalizado usando regex case-insensitive
             # Procura por nomes que COMEÇAM com o texto procurado
             filtro = {"nome_normalizado": {"$regex": f"^{nome_normalizado}", "$options": "i"}}
-            funcionario_por_nome = self.colecao.find_one(filtro)
+            with self.logger.performance("criar_ou_buscar_por_nome"):
+                funcionario_por_nome = self.colecao.find_one(filtro)
 
             if funcionario_por_nome:
                 logger.info(f"✓ Funcionário ENCONTRADO por nome: {funcionario_por_nome.get('nome')} - ID: {funcionario_por_nome.get('_id')}")
@@ -1121,16 +1133,17 @@ class FuncionarioService(HistoricoMixin):
             return {"dados": [], "total": 0, "skip": skip, "limit": limit, "paginas": 0, "pagina_atual": 0}
         
         try:
-            # Contar total
-            total = self.colecao.count_documents({})
+            with self.logger.performance("listar_todos_contar"):
+                total = self.colecao.count_documents({})
             
             # Buscar com paginação
-            docs = list(
-                self.colecao.find({})
-                .sort("nome", 1)
-                .skip(skip)
-                .limit(limit)
-            )
+            with self.logger.performance("listar_todos_buscar"):
+                docs = list(
+                    self.colecao.find({})
+                    .sort("nome", 1)
+                    .skip(skip)
+                    .limit(limit)
+                )
             
             # Calcular paginação
             paginas = (total + limit - 1) // limit if limit > 0 else 1
@@ -1213,7 +1226,8 @@ class FuncionarioService(HistoricoMixin):
                 }
             ]
             
-            resultado = list(self.colecao.aggregate(pipeline))
+            with self.logger.performance("buscar_aniversariantes"):
+                resultado = list(self.colecao.aggregate(pipeline))
             
             if not resultado:
                 logger.debug(f"Nenhum aniversariante encontrado no mês {mes}")
@@ -1338,7 +1352,8 @@ class FuncionarioService(HistoricoMixin):
                 }
             ]
             
-            resultado = list(self.colecao.aggregate(pipeline))
+            with self.logger.performance("buscar_com_relacionamentos"):
+                resultado = list(self.colecao.aggregate(pipeline))
             
             if not resultado:
                 logger.warning(f"Funcionário {funcionario_id} não encontrado")
@@ -1497,7 +1512,8 @@ class FuncionarioService(HistoricoMixin):
             pipeline.extend(lookups)
             
             # Executar pipeline
-            funcionarios = list(self.colecao.aggregate(pipeline))
+            with self.logger.performance("exportar_com_relacionamentos"):
+                funcionarios = list(self.colecao.aggregate(pipeline))
             
             if not funcionarios:
                 logger.info("Nenhum funcionário encontrado para exportação")
@@ -1551,13 +1567,13 @@ class FuncionarioService(HistoricoMixin):
         try:
             from bson import ObjectId
             
-            # Primeiro buscar contratos da empresa
-            contratos_ids = list(
-                self.db["contratos"].find(
-                    {"id_empresa": ObjectId(empresa_id)},
-                    {"_id": 1}
+            with self.logger.performance("listar_por_empresa_contratos"):
+                contratos_ids = list(
+                    self.db["contratos"].find(
+                        {"id_empresa": ObjectId(empresa_id)},
+                        {"_id": 1}
+                    )
                 )
-            )
             
             if not contratos_ids:
                 logger.info(f"Nenhum contrato encontrado para empresa {empresa_id}")
@@ -1583,7 +1599,8 @@ class FuncionarioService(HistoricoMixin):
                 }
             ]
             
-            resultado = list(self.colecao.aggregate(pipeline))
+            with self.logger.performance("listar_por_empresa_facet"):
+                resultado = list(self.colecao.aggregate(pipeline))
             
             if not resultado:
                 return [], 0
@@ -1670,7 +1687,8 @@ class FuncionarioService(HistoricoMixin):
                 }
             ]
             
-            resultado = list(self.colecao.aggregate(pipeline))
+            with self.logger.performance("obter_estatisticas"):
+                resultado = list(self.colecao.aggregate(pipeline))
             
             if not resultado:
                 logger.warning("Pipeline de estatísticas retornou vazio")

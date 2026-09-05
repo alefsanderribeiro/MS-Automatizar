@@ -710,121 +710,125 @@ class ZohoMailService:
         Returns:
             Dict com resultado: {"sucesso": bool, "mensagem": str, "detalhes": ...}
         """
-        if not self._disponivel:
-            return {
-                "sucesso": False,
-                "mensagem": "Zoho Mail não configurado ou requests não disponível",
-                "detalhes": None
-            }
-        
-        if not self.configurado:
-            return {
-                "sucesso": False,
-                "mensagem": "OAuth não configurado - execute configurar_oauth_interativo()",
-                "detalhes": None
-            }
-        
-        token = self._obter_access_token()
-        if not token:
-            return {
-                "sucesso": False,
-                "mensagem": "Não foi possível obter access token - token pode estar expirado",
-                "detalhes": {"sugestao": "Execute revogar_e_reautorizar()"}
-            }
-        
-        try:
-            # Fazer upload dos anexos
-            attachments_list = []
-            if anexos:
-                for anexo_path in anexos:
-                    attach_info = self._upload_anexo(anexo_path)
-                    if attach_info:
-                        attachments_list.append(attach_info)
-                    else:
-                        logger.warning(f"Falha no upload do anexo: {anexo_path}")
-            
-            # Preparar payload do e-mail
-            url = f"{self._get_mail_url()}/api/accounts/{self.account_id}/messages"
-            
-            headers = {
-                "Authorization": f"Zoho-oauthtoken {token}",
-                "Content-Type": "application/json"
-            }
-            
-            # Formatar destinatários (JSON array)
-            to_address = ",".join(destinatarios)
-            
-            
-            # Detectar se o corpo contém HTML simples
-            is_html = bool(re.search(r"<[^>]+>", corpo or ""))
-
-            corpo_html = (corpo.replace("\r\n", "\n").replace("\n", "<br/>") if corpo and not is_html else corpo)
-            
-            payload = {
-                "fromAddress": self.email_from,
-                "toAddress": to_address,
-                "subject": assunto,
-                "content": corpo_html,
-                "mailFormat": "html"
-            }
-            
-            
-            # Adicionar CC se houver
-            if cc:
-                payload["ccAddress"] = ",".join(cc)
-            
-            # Adicionar CCO se houver
-            if cco:
-                payload["bccAddress"] = ",".join(cco)
-            
-            # Adicionar anexos se houver
-            if attachments_list:
-                payload["attachments"] = attachments_list
-            
-            # Enviar e-mail
-            response = requests.post(
-                url,
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                dados = response.json()
-                
-                logger.info(
-                    f"✓ E-mail enviado para {', '.join(destinatarios)} "
-                    f"com {len(attachments_list)} anexo(s)"
-                )
-                
+        with self.logger.system_logger.correlation("enviar_email_zoho") as corr_id:
+            self.logger.info("Iniciando envio de e-mail", correlation_id=corr_id)
+            if not self._disponivel:
                 return {
-                    "sucesso": True,
-                    "mensagem": "E-mail enviado com sucesso",
-                    "detalhes": {
-                        "destinatarios": destinatarios,
-                        "anexos_count": len(attachments_list),
-                        "response": dados
-                    }
+                    "sucesso": False,
+                    "mensagem": "Zoho Mail não configurado ou requests não disponível",
+                    "detalhes": None
                 }
-            else:
-                erro_msg = f"Erro ao enviar e-mail: {response.status_code} - {response.text}"
+        
+            if not self.configurado:
+                return {
+                    "sucesso": False,
+                    "mensagem": "OAuth não configurado - execute configurar_oauth_interativo()",
+                    "detalhes": None
+                }
+        
+            token = self._obter_access_token()
+            if not token:
+                return {
+                    "sucesso": False,
+                    "mensagem": "Não foi possível obter access token - token pode estar expirado",
+                    "detalhes": {"sugestao": "Execute revogar_e_reautorizar()"}
+                }
+        
+            try:
+                # Fazer upload dos anexos
+                attachments_list = []
+                if anexos:
+                    for anexo_path in anexos:
+                        attach_info = self._upload_anexo(anexo_path)
+                        if attach_info:
+                            attachments_list.append(attach_info)
+                        else:
+                            logger.warning(f"Falha no upload do anexo: {anexo_path}")
+            
+                # Preparar payload do e-mail
+                url = f"{self._get_mail_url()}/api/accounts/{self.account_id}/messages"
+            
+                headers = {
+                    "Authorization": f"Zoho-oauthtoken {token}",
+                    "Content-Type": "application/json"
+                }
+            
+                # Formatar destinatários (JSON array)
+                to_address = ",".join(destinatarios)
+            
+            
+                # Detectar se o corpo contém HTML simples
+                is_html = bool(re.search(r"<[^>]+>", corpo or ""))
+
+                corpo_html = (corpo.replace("\r\n", "\n").replace("\n", "<br/>") if corpo and not is_html else corpo)
+            
+                payload = {
+                    "fromAddress": self.email_from,
+                    "toAddress": to_address,
+                    "subject": assunto,
+                    "content": corpo_html,
+                    "mailFormat": "html"
+                }
+            
+            
+                # Adicionar CC se houver
+                if cc:
+                    payload["ccAddress"] = ",".join(cc)
+            
+                # Adicionar CCO se houver
+                if cco:
+                    payload["bccAddress"] = ",".join(cco)
+            
+                # Adicionar anexos se houver
+                if attachments_list:
+                    payload["attachments"] = attachments_list
+            
+                # Enviar e-mail
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
+            
+                if response.status_code == 200:
+                    dados = response.json()
+                
+                    logger.info(
+                        f"✓ E-mail enviado para {', '.join(destinatarios)} "
+                        f"com {len(attachments_list)} anexo(s)"
+                    )
+                
+                    return {
+                        "sucesso": True,
+                        "mensagem": "E-mail enviado com sucesso",
+                        "detalhes": {
+                            "destinatarios": destinatarios,
+                            "anexos_count": len(attachments_list),
+                            "response": dados
+                        }
+                    }
+                else:
+                    erro_msg = f"Erro ao enviar e-mail: {response.status_code} - {response.text}"
+                    logger.error(erro_msg)
+                    return {
+                        "sucesso": False,
+                        "mensagem": erro_msg,
+                        "detalhes": response.json() if response.text else None
+                    }
+        
+            except Exception as e:
+                erro_msg = f"Erro ao enviar e-mail: {e}"
                 logger.error(erro_msg)
                 return {
                     "sucesso": False,
                     "mensagem": erro_msg,
-                    "detalhes": response.json() if response.text else None
+                    "detalhes": None
                 }
-        
-        except Exception as e:
-            erro_msg = f"Erro ao enviar e-mail: {e}"
-            logger.error(erro_msg)
-            return {
-                "sucesso": False,
-                "mensagem": erro_msg,
-                "detalhes": None
-            }
     
-    # ==================== VERIFICAÇÕES ====================
+        # ==================== VERIFICAÇÕES ====================
+
+            self.logger.info("Envio de e-mail concluído", correlation_id=corr_id)
     
     def verificar_conexao(self) -> Dict[str, Any]:
         """
