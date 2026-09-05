@@ -1,7 +1,10 @@
 from pathlib import Path
 from src.holerite import Holerite
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
 
+
+# Logger do módulo
+logger = get_logger("comando")
 
 def arquivo_arguments(parser):
     parser.add_argument('--arquivo', type=str, help='Informa o arquivo.')
@@ -43,8 +46,6 @@ def holerite_subcommands(subparsers):
 
 
 def handle_holerite(args, parser_holerite):
-    from src.utils.logger_config import logger
-    
     if args.subcommand == 'renomear_arquivos':
         _handle_renomear_arquivos(args)
     
@@ -91,6 +92,7 @@ def _handle_renomear_arquivos(args):
     hl = Holerite(diretório)
     logger.info(f"Renomeando arquivos no diretório: {diretório} {f'para o mês/ano: {mês_ano}' if mês_ano else ''}")
     hl.renomear_arquivos(mês_ano=mês_ano)
+    logger.audit("HOLERITE_ARQUIVOS_RENOMEADOS", target=f"diretorio:{diretório}", changes={"mês_ano": mês_ano})
 
 
 def _handle_processar_pdfs(args):

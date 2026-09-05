@@ -13,20 +13,22 @@ import os
 from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-from src.utils.logger_config import logger
 from src.utils.retry_utils import obter_config_retry
 from src.models.envio_folha_ponto_models import TipoEnvioEnum, StatusEnvioEnum
 from src.models.template_mensagem_models import TipoTemplateEnum
 from src.services.planilha_contatos_service import planilha_contatos_service
-from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
 from src.services.envio_folha_ponto_service import envio_folha_ponto_service
 from src.services.template_mensagem_service import template_mensagem_service
 from src.services.grupo_whatsapp_service import grupo_whatsapp_service
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("folha_ponto")
+
 from src.services.zoho_mail_service import zoho_mail_service
 from src.services.whatsapp_service import whatsapp_service
 from src.services.empresa_service import empresa_service
 from src.models.grupo_whatsapp_models import GrupoWhatsAppMongoDB
-
 
 # Nomes dos meses em português
 MESES_EXTENSO = {
@@ -131,7 +133,6 @@ class EnvioFolhaPontoOrquestrador:
         
         status = {
             "planilha": planilha_contatos_service.disponivel,
-            "mongodb_config_envios": config_envio_folha_ponto_service.disponivel,
             "mongodb_envios": envio_folha_ponto_service.disponivel,
             "mongodb_templates": template_mensagem_service.disponivel,
             "mongodb_grupos": grupo_whatsapp_service.disponivel,
@@ -628,48 +629,13 @@ class EnvioFolhaPontoOrquestrador:
             return None
     
     # ==================== EXECUÇÃO PRINCIPAL ====================
-
-    def _carregar_contatos(self, mes: int, ano: int, usar_mongodb: bool) -> tuple[Optional[List[Dict]], Optional[str]]:
-        """
-        Carrega os contatos/configs de envio a partir da FONTE configurada.
-
-        Durante a transição planilha -> MongoDB:
-        - usar_mongodb=True (padrão): lê as configurações do MongoDB
-          (configs_envio_folha_ponto). Se o Mongo estiver indisponível OU a
-          coleção de configs estiver vazia, cai no fallback da planilha.
-        - usar_mongodb=False: força a leitura direto da planilha Excel.
-
-        Returns:
-            (contatos, fonte): contatos prontos para envio e a fonte usada
-            ('mongodb' | 'planilha' | None em erro).
-        """
-        fonte = None
-
-        if usar_mongodb and config_envio_folha_ponto_service.disponivel:
-            contatos = config_envio_folha_ponto_service.listar_ativos_para_envio(mes, ano)
-            if contatos:
-                fonte = "mongodb"
-                self._reportar_progresso(f"Fonte de configs: MongoDB ({len(contatos)} configurações ativas)")
-                return contatos, fonte
-            logger.warning("MongoDB sem configurações de envio ativas - usando fallback da planilha")
-
-        # Fallback: planilha Excel (transição)
-        if not planilha_contatos_service.carregar():
-            logger.error("Não foi possível carregar a planilha de contatos")
-            return None, None
-
-        contatos = list(planilha_contatos_service.iterar_contatos(mes, ano))
-        fonte = "planilha"
-        self._reportar_progresso(f"Fonte de configs: Planilha Excel ({len(contatos)} contatos)")
-        return contatos, fonte
-
+    
     def executar(self, 
                  mes: int, 
                  ano: int,
                  tipos_envio: List[TipoEnvioEnum] = None,
                  contatos_ids: List[str] = None,
-                 dry_run: bool = False,
-                 usar_mongodb: bool = True) -> RelatorioEnvio:
+                 dry_run: bool = False) -> RelatorioEnvio:
         """
         Executa o processo completo de envio
         
@@ -679,15 +645,15 @@ class EnvioFolhaPontoOrquestrador:
             tipos_envio: Tipos de envio a realizar (None = todos)
             contatos_ids: IDs de contatos específicos (None = todos)
             dry_run: Se True, apenas simula sem enviar
-            usar_mongodb: Se True (padrão), usa o MongoDB como fonte das
-                configurações de envio, com fallback para a planilha Excel
-                quando o Mongo estiver vazio/indisponível. Se False, força
-                a leitura direto da planilha (transição).
-
+        
         Returns:
             Relatório com resultado dos envios
         """
         relatorio = RelatorioEnvio(mes=mes, ano=ano)
+        
+        # Correlation ID para rastreamento do fluxo de envio
+        with logger.correlation("envio_folha_ponto") as corr_id:
+            logger.info(f"Iniciando envio de folhas de ponto {mes:02d}/{ano}", correlation_id=corr_id)
         
         # Tipos de envio
         tipos = tipos_envio or [
@@ -706,14 +672,15 @@ class EnvioFolhaPontoOrquestrador:
         # Verificar serviços
         status_servicos = self.verificar_servicos()
         
-        # Carregar contatos da fonte (MongoDB por padrão, fallback planilha)
-        contatos, fonte = self._carregar_contatos(mes, ano, usar_mongodb)
-
-        if contatos is None:
-            logger.error("Não foi possível carregar configurações/contatos")
-            relatorio.erros.append({"erro": f"Falha ao carregar contatos (fonte: {fonte})"})
+        # Carregar planilha
+        if not planilha_contatos_service.carregar():
+            logger.error("Não foi possível carregar a planilha de contatos")
+            relatorio.erros.append({"erro": "Falha ao carregar planilha"})
             relatorio.fim = datetime.now(timezone.utc)
             return relatorio
+
+        # Iterar contatos (carregar ANTES do pre-processamento)
+        contatos = list(planilha_contatos_service.iterar_contatos(mes, ano))
 
         # Filtrar por IDs se especificado
         if contatos_ids:

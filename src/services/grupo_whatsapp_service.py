@@ -12,16 +12,14 @@ import unicodedata
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.models.grupo_whatsapp_models import (
     StatusGrupo,
     GrupoWhatsAppMongoDB,
     GrupoWhatsAppBuilder,
 )
+from src.utils.logger_config_v2 import get_logger
 from src.services.historico_decorators import HistoricoMixin
 from src.services.mongodb_connection import MongoDBConnectionPool
-from src.services.cache_service import cache_service
-from src.services import cache_keys
 
 # Tentativa de importação do MongoDB
 try:
@@ -31,6 +29,9 @@ try:
     MONGODB_DISPONIVEL = True
 except ImportError:
     MONGODB_DISPONIVEL = False
+
+logger = get_logger("whatsapp")
+if not MONGODB_DISPONIVEL:
     logger.warning("PyMongo não instalado - GrupoWhatsAppService ficará limitado")
 
 
@@ -54,9 +55,6 @@ class GrupoWhatsAppService(HistoricoMixin):
         # Cache em memória (chave: nome_normalizado, valor: JID)
         self._cache_nome_jid: Dict[str, str] = {}
         self._cache_carregado = False
-        
-        # Cache service (Redis + memória) para persistência entre processos
-        self.cache = cache_service
         
         if not MONGODB_DISPONIVEL:
             logger.error("MongoDB não disponível para Grupos WhatsApp")
@@ -140,13 +138,9 @@ class GrupoWhatsAppService(HistoricoMixin):
             logger.warning(f"Erro ao criar índices: {e}")
     
     def _invalidar_cache(self) -> None:
-        """Limpa cache (memória local + Redis)."""
+        """Limpa cache"""
         self._cache_nome_jid.clear()
         self._cache_carregado = False
-        try:
-            self.cache.invalidate(cache_keys.grupos_wa_prefix())
-        except Exception as e:
-            logger.warning(f"Erro ao invalidar cache Redis de grupos: {e}")
     
     def _carregar_cache(self) -> None:
         """
@@ -212,6 +206,13 @@ class GrupoWhatsAppService(HistoricoMixin):
                 },
                 upsert=True
             )
+            
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             
             self._invalidar_cache()
             
@@ -302,51 +303,34 @@ class GrupoWhatsAppService(HistoricoMixin):
             logger.warning(f"Device ID nao fornecido para buscar grupo: {nome}")
             return None
 
-        # Normalizar nome para chave única entre escrita/leitura
+        # Verificar cache primeiro
+        self._carregar_cache()
         nome_norm = self.normalizar_texto(nome)
-        if not nome_norm:
-            return None
 
-        # Chave do cache local: device_id:nome_normalizado
+        # Chave do cache: device_id:nome_normalizado
         cache_key = f"{device_id}:{nome_norm}"
 
-        # 1) Verificar cache Redis (cache-aside compartilhado entre processos)
-        redis_key = cache_keys.grupo_wa_key(device_id, nome_norm)
-        try:
-            cached_jid = self.cache.get(redis_key)
-            if cached_jid:
-                self._cache_nome_jid[cache_key] = cached_jid
-                return cached_jid
-        except Exception:
-            pass
-
-        # Verificar cache local (read-through dentro do processo)
-        self._carregar_cache()
-
-        # Busca exata no cache local
+        # Busca exata no cache
         if cache_key in self._cache_nome_jid:
-            jid = self._cache_nome_jid[cache_key]
-            # Reaquecer Redis a partir do cache local
-            self.cache.set(redis_key, jid, ttl=cache_keys.ttl_padrao())
-            return jid
+            return self._cache_nome_jid[cache_key]
 
-        # Busca parcial no cache local (apenas para o mesmo device)
+        # Busca parcial no cache (apenas para o mesmo device)
         for chave_cache, jid in self._cache_nome_jid.items():
+            # Extrair device_id e nome da chave
             if ":" in chave_cache:
                 cache_device, cache_nome = chave_cache.split(":", 1)
                 if cache_device == device_id:
                     if nome_norm in cache_nome or cache_nome in nome_norm:
                         logger.debug(f"Match parcial (cache): '{nome}' -> JID encontrado (device: {device_id})")
-                        self.cache.set(redis_key, jid, ttl=cache_keys.ttl_padrao())
                         return jid
 
-        # Buscar no banco (cache miss)
+        # Buscar no banco
         grupo = self.buscar_por_nome(nome, device_id)
         if grupo:
             jid = grupo.get("jid")
+            # Adicionar ao cache
             if nome_norm and jid:
                 self._cache_nome_jid[cache_key] = jid
-                self.cache.set(redis_key, jid, ttl=cache_keys.ttl_padrao())
             return jid
 
         logger.warning(f"Grupo nao encontrado: {nome} (device: {device_id})")
@@ -525,7 +509,13 @@ class GrupoWhatsAppService(HistoricoMixin):
                 },
                 upsert=True
             )
-
+            
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             if resultado.upserted_id:
                 logger.debug(f"Grupo criado: {dados.get('nome')} (JID: {jid}, device: {device_id})")
                 return str(resultado.upserted_id)

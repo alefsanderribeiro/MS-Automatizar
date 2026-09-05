@@ -1,5 +1,10 @@
 
 import argparse
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("comando")
+
 from src.comandos.folha_de_ponto import folha_de_ponto_subcommands, handle_folha_de_ponto
 from src.comandos.holerite import holerite_subcommands, handle_holerite
 from src.comandos.referencias import (
@@ -162,7 +167,7 @@ def handle_diretorios(args, parser):
 
 
 def start_command():
-    parser = argparse.ArgumentParser(description="Automatizar tarefas com Python para a empresa cliente")
+    parser = argparse.ArgumentParser(description="Automatizar tarefas com Python na empresa Moraes e Santos")
     subparsers = parser.add_subparsers(dest='command', help='Comandos principais')
     
     folha_de_ponto_subcommands(subparsers)
@@ -171,6 +176,8 @@ def start_command():
     diretorios_subcommands(subparsers)
     
     args = parser.parse_args()
+    
+    logger.info(f"Comando CLI iniciado: {vars(args)}")
     
     if not any(vars(args).values()):
         from src.interface.menu import init_interface

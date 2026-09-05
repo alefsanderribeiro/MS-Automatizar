@@ -3,15 +3,17 @@ Serviço de Folha de Ponto em MongoDB
 Gerencia armazenamento, busca e atualização de folhas de ponto
 """
 
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
 from enum import Enum
-import re
 import dotenv
 
-from src.utils.logger_config import logger
 from src.utils.dotenv_path import caminho_dotenv
 from src.services.mongodb_connection import MongoDBConnectionPool
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("folha_ponto")
+
 
 try:
     from pymongo import ASCENDING
@@ -45,6 +47,8 @@ class FolhaDePontoService:
     """
 
     def __init__(self, collection_name: str = "folha_de_ponto"):
+
+        self.logger = get_logger("folha_ponto")
         """
         Inicializa serviço de folha de ponto usando pool centralizado.
 
@@ -330,6 +334,18 @@ class FolhaDePontoService:
             
             # Inserir nova folha
             resultado = self.colecao.insert_one(documento)
+
+            if resultado and resultado.inserted_id:
+
+                self.logger.audit(
+
+                    action="REGISTRO_CRIADO",
+
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+                    changes={'dados': str(documento)[:200]}
+
+                )
             
             if resultado.inserted_id:
                 funcionario_nome = documento.get('folha_data', {}).get('funcionario', {}).get('nome', '')
@@ -639,307 +655,6 @@ class FolhaDePontoService:
             logger.error(f"Erro ao deletar folha: {e}")
             return False
     
-    def buscar_por_id(self, folha_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Busca uma folha de ponto pelo _id do documento (ObjectId).
-
-        Args:
-            folha_id: ObjectId da folha (string)
-
-        Returns:
-            Dicionário com os dados da folha (incluindo _id) ou None se não encontrada
-        """
-        if not self.disponivel:
-            logger.warning("MongoDB não disponível para busca por id")
-            return None
-
-        try:
-            from bson import ObjectId
-            documento = self.colecao.find_one({"_id": ObjectId(folha_id)})
-            if documento:
-                logger.debug(f"✓ Folha encontrada por id: {folha_id}")
-            else:
-                logger.debug(f"✗ Folha não encontrada por id: {folha_id}")
-            return documento
-        except Exception as e:
-            logger.error(f"Erro ao buscar folha por id: {e}")
-            return None
-
-    def buscar_por_nome_funcionario(
-        self,
-        nome: str,
-        mes_referencia: Optional[str] = None,
-        status: Optional[str] = None,
-        incluir_excluidas: bool = False,
-        limite: int = 100,
-    ) -> List[Dict[str, Any]]:
-        """
-        Busca folhas de ponto pelo NOME do funcionário (busca parcial,
-        case-insensitive, sem acentos). Filtros opcionais: mês e status.
-
-        Usa o campo folha_data.nome_funcionario gravado na geração e também
-        tenta resolver o nome para ObjectId(s) na coleção de funcionários
-        (busca por regex) para cobrir folhas antigas sem nome duplicado.
-
-        Args:
-            nome: Nome (ou parte do nome) do funcionário
-            mes_referencia: Mês YYYY-MM opcional para filtrar
-            status: Status opcional (criada, preenchida, analise_concluida, etc)
-            incluir_excluidas: Se True, inclui folhas com soft delete (excluida=True)
-            limite: Máximo de resultados
-
-        Returns:
-            Lista de dicionários com as folhas encontradas (sem _id)
-        """
-        if not self.disponivel:
-            return []
-
-        try:
-            import unicodedata
-            from bson import ObjectId
-
-            nome = (nome or "").strip()
-            if not nome:
-                return []
-
-            # Normalizar termo (minúsculas, sem acentos)
-            def normalizar(texto: str) -> str:
-                nfkd = unicodedata.normalize('NFKD', texto or '')
-                return ''.join(c for c in nfkd if not unicodedata.combining(c)).lower()
-
-            termo = normalizar(nome)
-            termo_regex = re.escape(termo) if re else termo
-
-            # 1) Busca por NOME NORMALIZADO gravado na folha (folha_data.nome_normalizado)
-            #    - cobre folhas novas/geradas que gravam o nome normalizado (busca com acento OK)
-            filtro_nome_normalizado = {
-                "folha_data.nome_normalizado": {
-                    "$regex": termo_regex, "$options": "i"
-                }
-            }
-
-            # 2) Fallback: busca por nome bruto na folha (folhas antigas sem nome_normalizado)
-            #    - limitação: não casa acento, mas cobre partes sem acento do nome
-            filtro_nome_bruto = {
-                "folha_data.nome_funcionario": {
-                    "$regex": termo_regex, "$options": "i"
-                }
-            }
-
-            # 3) Resolver nome -> ObjectIds de funcionários via nome_normalizado
-            #    (cobre folhas antigas e novas; a coleção de funcionários sempre tem nome_normalizado)
-            funcionario_ids = []
-            try:
-                db = self.colecao.database
-                col_funcionarios = db['funcionarios']
-                funcs = list(col_funcionarios.find(
-                    {"nome_normalizado": {"$regex": termo_regex, "$options": "i"}},
-                    {"_id": 1}
-                ).limit(50))
-                funcionario_ids = [f['_id'] for f in funcs]
-            except Exception as e:
-                logger.debug(f"Não foi possível resolver funcionários por nome: {e}")
-
-            or_clauses = [filtro_nome_normalizado, filtro_nome_bruto]
-            if funcionario_ids:
-                or_clauses.append({"funcionario_id": {"$in": funcionario_ids}})
-
-            filtro: Dict[str, Any] = {"$or": or_clauses}
-
-            if mes_referencia:
-                filtro["mes_referencia"] = mes_referencia
-            if status:
-                filtro["status"] = status
-            if not incluir_excluidas:
-                filtro["excluida"] = {"$ne": True}
-
-            documentos = list(
-                self.colecao.find(filtro)
-                .sort([("mes_referencia", -1), ("folha_data.nome_funcionario", 1)])
-                .limit(limite)
-            )
-
-            logger.debug(f"✓ {len(documentos)} folhas encontradas para nome='{nome}'")
-            return documentos
-
-        except Exception as e:
-            logger.error(f"Erro ao buscar folhas por nome do funcionário: {e}")
-            return []
-
-    def marcar_excluida(
-        self,
-        folha_id: str,
-        motivo: Optional[str] = None,
-    ) -> bool:
-        """
-        SOFT DELETE: marca a folha como excluída (excluida=True + data_exclusao),
-        sem remover o documento do banco. Preserva o registro e o histórico de envio.
-
-        Args:
-            folha_id: ObjectId da folha
-            motivo: Motivo da exclusão (opcional)
-
-        Returns:
-            True se a folha foi marcada como excluída, False caso contrário
-        """
-        if not self.disponivel:
-            logger.warning("MongoDB não disponível para soft delete")
-            return False
-
-        try:
-            from bson import ObjectId
-            from datetime import datetime, timezone
-
-            folha = self.buscar_por_id(folha_id)
-            if not folha:
-                logger.debug(f"Folha não encontrada para soft delete: {folha_id}")
-                return False
-
-            if folha.get("excluida"):
-                logger.info(f"Folha {folha_id} já estava marcada como excluída")
-                return True
-
-            versao_atual = folha.get("versao", 1)
-            historico = folha.get("historico_alteracoes", []) or []
-            historico.append({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "acao": "Folha excluída (soft delete)",
-                "versao_anterior": versao_atual,
-                "versao_nova": versao_atual + 1,
-                "detalhes": {"motivo": motivo or ""},
-            })
-
-            resultado = self.colecao.update_one(
-                {"_id": ObjectId(folha_id)},
-                {"$set": {
-                    "excluida": True,
-                    "data_exclusao": datetime.now(timezone.utc),
-                    "motivo_exclusao": motivo,
-                    "data_atualizacao": datetime.now(timezone.utc),
-                    "versao": versao_atual + 1,
-                    "historico_alteracoes": historico,
-                }}
-            )
-
-            if resultado.modified_count > 0 or resultado.matched_count > 0:
-                logger.info(f"✓ Folha marcada como excluída (soft delete): {folha_id}")
-                return True
-            return False
-
-        except Exception as e:
-            logger.error(f"Erro ao marcar folha como excluída: {e}")
-            return False
-
-    def atualizar_folha(
-        self,
-        folha_id: str,
-        dados_folha: Dict[str, Any],
-        acao: str = "Folha editada",
-        detalhes_historico: Optional[Dict[str, Any]] = None,
-    ) -> bool:
-        """
-        Atualiza uma folha de ponto existente (edição), preservando rastreabilidade:
-        incrementa `versao` e registra a alteração em `historico_alteracoes`.
-
-        Args:
-            folha_id: ObjectId da folha
-            dados_folha: Campos a atualizar (ex: {"folha_data": {...}})
-            acao: Descrição da ação para o histórico
-            detalhes_historico: Detalhes adicionais para o histórico
-
-        Returns:
-            True se atualizada, False caso contrário
-        """
-        if not self.disponivel:
-            logger.warning("MongoDB não disponível para atualizar folha")
-            return False
-
-        try:
-            from bson import ObjectId
-            from datetime import datetime, timezone
-
-            folha = self.buscar_por_id(folha_id)
-            if not folha:
-                logger.debug(f"Folha não encontrada para atualização: {folha_id}")
-                return False
-
-            versao_atual = folha.get("versao", 1)
-            historico = folha.get("historico_alteracoes", []) or []
-            historico.append({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "acao": acao,
-                "versao_anterior": versao_atual,
-                "versao_nova": versao_atual + 1,
-                "detalhes": detalhes_historico or {},
-            })
-
-            update = {"$set": dict(dados_folha)}
-            update["$set"]["versao"] = versao_atual + 1
-            update["$set"]["historico_alteracoes"] = historico
-            update["$set"]["data_atualizacao"] = datetime.now(timezone.utc)
-
-            resultado = self.colecao.update_one(
-                {"_id": ObjectId(folha_id)},
-                update,
-            )
-
-            if resultado.modified_count > 0 or resultado.matched_count > 0:
-                logger.info(f"✓ Folha atualizada (versão {versao_atual} -> {versao_atual + 1}): {folha_id}")
-                return True
-            return False
-
-        except Exception as e:
-            logger.error(f"Erro ao atualizar folha: {e}")
-            return False
-
-    def verificar_folha_enviada(self, folha_id: str) -> bool:
-        """
-        Verifica se uma folha já foi registrada em algum envio (coleção de envios).
-        Busca por arquivo/nome do PDF ou pelo período na coleção 'envios_folhas_de_ponto'.
-
-        Args:
-            folha_id: ObjectId da folha
-
-        Returns:
-            True se a folha aparece em algum envio registrado
-        """
-        if not self.disponivel:
-            return False
-
-        try:
-            folha = self.buscar_por_id(folha_id)
-            if not folha:
-                return False
-
-            # Caminho/arquivo do PDF gerado
-            caminho_pdf = folha.get("caminho_arquivo_gerado") or ""
-            nome_arquivo = str(caminho_pdf).split("/")[-1].split("\\")[-1] if caminho_pdf else ""
-            mes_referencia = folha.get("mes_referencia", "")
-
-            db = self.colecao.database
-            col_envios = db['envios_folhas_de_ponto']
-
-            filtros_or = []
-            if nome_arquivo:
-                filtros_or.append({"arquivos_enviados": nome_arquivo})
-                filtros_or.append({"arquivos_enviados": {"$regex": re.escape(nome_arquivo), "$options": "i"}})
-            if mes_referencia and "-" in mes_referencia:
-                try:
-                    ano, mes = mes_referencia.split("-")
-                    filtros_or.append({"ano_referencia": int(ano), "mes_referencia": int(mes)})
-                except Exception:
-                    pass
-
-            if not filtros_or:
-                return False
-
-            envio = col_envios.find_one({"$or": filtros_or})
-            return envio is not None
-
-        except Exception as e:
-            logger.error(f"Erro ao verificar se folha foi enviada: {e}")
-            return False
-
     def listar_todos(self, skip: int = 0, limit: int = 100) -> dict:
         """
         Lista todas as folhas de ponto com paginação

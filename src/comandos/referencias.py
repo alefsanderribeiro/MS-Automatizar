@@ -11,8 +11,11 @@ from src.services.funcao_service import FuncaoService
 from src.models.contrato_models import ContratoBuilder, StatusContrato
 from src.models.horario_models import HorarioBuilder, StatusHorario
 from src.models.funcao_models import FuncaoBuilder, StatusFuncao
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
 
+
+# Logger do módulo
+logger = get_logger("comando")
 
 # ============================================================================
 # COMANDOS DE CONTRATOS
@@ -67,8 +70,7 @@ def listar_contratos(apenas_ativos: bool = False, formato: str = "tabela") -> No
             if contrato.get('localidade'):
                 logger.info(f"  Local:      {contrato.get('localidade')}")
             if contrato.get('inicio_vigencia'):
-                from src.utils.data_utils import formatar_data_br
-                logger.info(f"  Vigência:   {formatar_data_br(contrato.get('inicio_vigencia'))} até {formatar_data_br(contrato.get('fim_vigencia'))}")
+                logger.info(f"  Vigência:   {contrato.get('inicio_vigencia')} até {contrato.get('fim_vigencia')}")
 
 
 def adicionar_contrato_interativo() -> None:
@@ -153,6 +155,7 @@ def adicionar_contrato_interativo() -> None:
         if contrato_id:
             logger.info(f"\n✓ Contrato criado com sucesso!")
             logger.info(f"  ID: {contrato_id}")
+            logger.audit("CONTRATO_CRIADO", target=f"contrato:{contrato_id}", changes={"nome": nome})
         else:
             logger.error("✗ Erro ao criar contrato")
     
@@ -191,6 +194,7 @@ def inativar_contrato(contrato_id: str) -> None:
         
         if sucesso:
             logger.info("✓ Contrato inativado com sucesso")
+            logger.audit("CONTRATO_INATIVADO", target=f"contrato:{contrato_id}", changes={"nome": contrato.get('nome')})
         else:
             logger.error("✗ Não foi possível inativar o contrato")
             logger.error("  Provavelmente existem funcionários vinculados")
@@ -367,6 +371,7 @@ def adicionar_horario_interativo() -> None:
         if horario_id:
             logger.info(f"\n✓ Horário criado com sucesso!")
             logger.info(f"  ID: {horario_id}")
+            logger.audit("HORARIO_CRIADO", target=f"horario:{horario_id}", changes={"descricao": descricao})
         else:
             logger.error("✗ Erro ao criar horário")
     
@@ -405,6 +410,7 @@ def inativar_horario(horario_id: str) -> None:
         
         if sucesso:
             logger.info("✓ Horário inativado com sucesso")
+            logger.audit("HORARIO_INATIVADO", target=f"horario:{horario_id}", changes={"descricao": horario.get('descricao')})
         else:
             logger.error("✗ Não foi possível inativar o horário")
             logger.error("  Provavelmente existem funcionários vinculados")
@@ -521,6 +527,7 @@ def adicionar_funcao_interativo() -> None:
         if funcao_id:
             logger.info(f"\n✓ Função criada com sucesso!")
             logger.info(f"  ID: {funcao_id}")
+            logger.audit("FUNCAO_CRIADA", target=f"funcao:{funcao_id}", changes={"nome": nome})
         else:
             logger.error("✗ Erro ao criar função")
     
@@ -559,6 +566,7 @@ def inativar_funcao(funcao_id: str) -> None:
         
         if sucesso:
             logger.info("✓ Função inativada com sucesso")
+            logger.audit("FUNCAO_INATIVADA", target=f"funcao:{funcao_id}", changes={"nome": funcao.get('nome')})
         else:
             logger.error("✗ Não foi possível inativar a função")
             logger.error("  Provavelmente existem funcionários vinculados")
@@ -588,7 +596,8 @@ def exibir_estatisticas() -> None:
     logger.info("=" * 80)
     
     # Contratos
-    total_contratos = contrato_service.colecao.count_documents({})
+    with logger.performance("contar_contratos"):
+        total_contratos = contrato_service.colecao.count_documents({})
     ativos_contratos = contrato_service.colecao.count_documents({"status": StatusContrato.ATIVO.value})
     auto_contratos = contrato_service.colecao.count_documents({"auto_criado": True})
     

@@ -6,8 +6,12 @@ incluindo o menu de entrada e navegação para os demais módulos.
 """
 
 import os
+from src.utils.logger_config_v2 import get_logger
 
-from src.utils.logger_config import logger
+
+# Logger do módulo
+logger = get_logger("interface")
+
 
 # Carrega metadados do pacote a partir do __init__.py raiz, sem depender
 # de hack de sys.path (importlib via caminho absoluto evita identidade duplicada).
@@ -154,7 +158,7 @@ def _exibir_apresentacao() -> None:
 [bold cyan]GitHub:[/bold cyan] {__github__}
 
 [dim]Seja Bem-vindo ao Automatiza MS!
-Este programa automatiza processos manuais para a empresa cliente.
+Este programa automatiza processos manuais da empresa Moraes e Santos.
 Você pode fazer várias operações com Folhas de Pontos ou Holerites dos seus funcionários.[/dim]
 """
     exibir_painel(info, titulo="MS-Automatizar", estilo_borda="cyan")
@@ -299,7 +303,7 @@ def Apresentação() -> str:
     GitHub: {__github__}
     {"".center(50, "—")}
     Seja Bem-vindo ao Automatiza MS!
-    Este programa automatiza processos manuais para a empresa cliente.
+    Este programa automatiza processos manuais da empresa Moraes e Santos.
     Você pode fazer várias operações com Folhas de Pontos ou Holerites dos seus funcionários.
     Você pode usar o comando --help ou -h para ver todas as opções disponíveis.
     Caso não escolha nenhuma opção na inicialização, o programa será iniciado em modo interativo.

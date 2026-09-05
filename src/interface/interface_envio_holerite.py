@@ -10,7 +10,11 @@ Responsabilidades:
 from datetime import datetime
 from typing import Optional
 
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("interface")
+
 from src.processadores.envio_holerite_orquestrador import (
     envio_holerite_orquestrador,
     RelatorioEnvioHolerite,
@@ -513,11 +517,12 @@ def menu_enviar_mongodb_real():
         return
 
     console.print("\nExecutando envio...")
-    relatorio = envio_holerite_orquestrador.enviar_via_mongodb(
-        competencia=competencia,
-        canais=canais,
-        apenas_simular=False
-    )
+    with logger.correlation("envio_holerite_interface"):
+        relatorio = envio_holerite_orquestrador.enviar_via_mongodb(
+            competencia=competencia,
+            canais=canais,
+            apenas_simular=False
+        )
 
     exibir_relatorio(relatorio)
     pausar()

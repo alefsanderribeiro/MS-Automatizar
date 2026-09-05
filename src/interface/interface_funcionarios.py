@@ -5,11 +5,14 @@ Permite criar, atualizar, listar e remover funcionários
 
 from typing import Optional, List, Dict, Any
 from datetime import date
-from src.utils.logger_config import logger
-from src.utils.data_utils import parse_data_flexivel, formatar_data_br
 from src.models.funcionario_models import StatusFuncionario
 from src.models.contrato_models import StatusContrato
 from src.models.funcao_models import StatusFuncao
+
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("interface")
 
 from src.interface.core.components import (
     MenuBuilder,
@@ -99,7 +102,8 @@ def listar_funcionarios():
 
     try:
         logger.debug("Iniciando listar_todos...")
-        resultado = servico.listar_todos(limit=500)
+        with logger.performance("listar_todos_funcionarios"):
+            resultado = servico.listar_todos(limit=500)
         logger.debug(f"Resultado recebido: tipo={type(resultado)}, valor={resultado}")
 
         # Verificar se resultado é válido
@@ -155,13 +159,15 @@ def listar_funcionarios():
                     nome = func.get("nome")
                     lotacao = func.get("lotacao")
                     status = func.get("status")
+                    codigo = func.get("codigo_funcionario")
 
                     # Converter None para "N/A"
                     nome = str(nome) if nome else "N/A"
                     lotacao = str(lotacao) if lotacao else "N/A"
                     status = str(status) if status else "N/A"
+                    codigo = str(codigo) if codigo else "-"
 
-                    dados.append([nome, lotacao, status])
+                    dados.append([codigo, nome, lotacao, status])
                 except TypeError as e:
                     logger.error(f"Funcionário {idx}: erro de tipo - {e}")
                     logger.debug(f"  func = {func}, tipo = {type(func)}")
@@ -173,7 +179,7 @@ def listar_funcionarios():
             if dados:
                 exibir_tabela(
                     f"{len(funcionarios)} funcionario(s) encontrado(s)",
-                    ["Nome", "Lotacao", "Status"],
+                    ["Cod", "Nome", "Lotacao", "Status"],
                     dados
                 )
             else:
@@ -192,6 +198,7 @@ def listar_por_filtro():
 
     (
         MenuBuilder("LISTAR FUNCIONARIOS POR FILTRO", ICONES["buscar"])
+        .adicionar("Por Codigo do Funcionario", _filtrar_por_codigo, ICONES["funcionario"])
         .adicionar("Por Nome", _filtrar_por_nome, ICONES["funcionario"])
         .adicionar("Por Empresa", _filtrar_por_empresa, ICONES["empresa"])
         .adicionar("Por Lotacao", _filtrar_por_lotacao, ICONES["diretorio"])
@@ -203,6 +210,39 @@ def listar_por_filtro():
         .com_voltar("Voltar")
         .executar()
     )
+
+
+def _filtrar_por_codigo():
+    """Filtra funcionários por código do funcionário"""
+    servico = FuncionarioService()
+
+    exibir_cabecalho("FILTRAR POR CODIGO DO FUNCIONARIO")
+
+    codigo_str = pedir_texto("Digite o codigo do funcionario:")
+    if not codigo_str:
+        exibir_erro("Codigo nao pode ser vazio.")
+        return
+
+    try:
+        codigo = int(codigo_str)
+    except ValueError:
+        exibir_erro("Codigo deve ser um numero inteiro.")
+        return
+
+    try:
+        with logger.performance("buscar_funcionario_por_codigo"):
+            funcionarios = list(servico.colecao.find({
+                "codigo_funcionario": codigo
+            }).sort("nome", 1))
+
+        if not funcionarios:
+            exibir_info(f"Nenhum funcionario encontrado com codigo {codigo}.")
+        else:
+            exibir_info(f"{len(funcionarios)} funcionario(s) encontrado(s):")
+            _exibir_lista_funcionarios(funcionarios)
+
+    except Exception as e:
+        exibir_erro(f"Erro na busca: {e}")
 
 
 def _filtrar_por_nome():
@@ -224,9 +264,10 @@ def _filtrar_por_nome():
         nome_normalizado = ''.join([c for c in nfkd if not unicodedata.combining(c)]).lower()
 
         # Buscar diretamente na coleção usando regex
-        cursor = servico.colecao.find({
-            "nome_normalizado": {"$regex": nome_normalizado, "$options": "i"}
-        }).sort("nome", 1)
+        with logger.performance("buscar_funcionario_por_nome"):
+            cursor = servico.colecao.find({
+                "nome_normalizado": {"$regex": nome_normalizado, "$options": "i"}
+            }).sort("nome", 1)
 
         funcionarios = list(cursor)
 
@@ -244,6 +285,8 @@ def _filtrar_por_empresa():
     """Filtra funcionários por empresa (seleção de lista)"""
     servico_funcionario = FuncionarioService()
     servico_empresa = EmpresaService()
+
+    exibir_cabecalho("FILTRAR POR EMPRESA")
 
     try:
         # Listar todas as empresas
@@ -278,8 +321,6 @@ def _filtrar_por_empresa():
 
         funcionarios = list(cursor)
 
-        # Cabeçalho único ANTES de exibir o resultado (não acumula com o
-        # menu pai e não é chamado no meio de um questionary - BUG 3/BUG 4).
         exibir_cabecalho(f"Funcionarios da empresa: {empresa_nome}")
 
         if not funcionarios:
@@ -340,6 +381,8 @@ def _filtrar_por_contrato():
     servico_funcionario = FuncionarioService()
     servico_contrato = ContratoService()
 
+    exibir_cabecalho("FILTRAR POR CONTRATO DA EMPRESA")
+
     try:
         # Listar todos os contratos
         contratos = servico_contrato.listar_todos()
@@ -369,7 +412,6 @@ def _filtrar_por_contrato():
 
         funcionarios = list(cursor)
 
-        # Cabeçalho único ANTES de exibir o resultado (BUG 3).
         exibir_cabecalho(f"Funcionarios do contrato: {contrato_nome}")
 
         if not funcionarios:
@@ -386,6 +428,8 @@ def _filtrar_por_funcao():
     """Filtra funcionários por função (seleção de lista)"""
     servico_funcionario = FuncionarioService()
     servico_funcao = FuncaoService()
+
+    exibir_cabecalho("FILTRAR POR FUNCAO")
 
     try:
         # Listar todas as funções
@@ -416,7 +460,6 @@ def _filtrar_por_funcao():
 
         funcionarios = list(cursor)
 
-        # Cabeçalho único ANTES de exibir o resultado (BUG 3).
         exibir_cabecalho(f"Funcionarios com funcao: {funcao_nome}")
 
         if not funcionarios:
@@ -432,6 +475,8 @@ def _filtrar_por_funcao():
 def _filtrar_por_data_nascimento():
     """Filtra funcionários por data de nascimento"""
     servico = FuncionarioService()
+
+    exibir_cabecalho("FILTRAR POR DATA DE NASCIMENTO")
 
     opcao = pedir_selecao(
         "Opcoes de filtro:",
@@ -472,8 +517,8 @@ def _filtrar_por_data_nascimento():
 
         elif "periodo" in opcao:
             # Filtrar por período
-            data_inicio = _input_data("Data inicial (DD/MM/YYYY):")
-            data_fim = _input_data("Data final (DD/MM/YYYY):")
+            data_inicio = _input_data("Data inicial (YYYY-MM-DD):")
+            data_fim = _input_data("Data final (YYYY-MM-DD):")
 
             if not data_inicio or not data_fim:
                 exibir_erro("Datas invalidas.")
@@ -488,7 +533,7 @@ def _filtrar_por_data_nascimento():
 
             funcionarios = list(cursor)
 
-            exibir_cabecalho(f"Funcionarios nascidos entre {formatar_data_br(data_inicio)} e {formatar_data_br(data_fim)}")
+            exibir_cabecalho(f"Funcionarios nascidos entre {data_inicio} e {data_fim}")
 
             if not funcionarios:
                 exibir_info("Nenhum funcionario encontrado neste periodo.")
@@ -527,6 +572,8 @@ def _filtrar_por_data_nascimento():
 def _filtrar_por_data_admissao():
     """Filtra funcionários por data de admissão"""
     servico = FuncionarioService()
+
+    exibir_cabecalho("FILTRAR POR DATA DE ADMISSAO")
 
     opcao = pedir_selecao(
         "Opcoes de filtro:",
@@ -578,8 +625,8 @@ def _filtrar_por_data_admissao():
 
         elif "periodo" in opcao:
             # Filtrar por período
-            data_inicio = _input_data("Data inicial (DD/MM/YYYY):")
-            data_fim = _input_data("Data final (DD/MM/YYYY):")
+            data_inicio = _input_data("Data inicial (YYYY-MM-DD):")
+            data_fim = _input_data("Data final (YYYY-MM-DD):")
 
             if not data_inicio or not data_fim:
                 exibir_erro("Datas invalidas.")
@@ -594,7 +641,7 @@ def _filtrar_por_data_admissao():
 
             funcionarios = list(cursor)
 
-            exibir_cabecalho(f"Funcionarios admitidos entre {formatar_data_br(data_inicio)} e {formatar_data_br(data_fim)}")
+            exibir_cabecalho(f"Funcionarios admitidos entre {data_inicio} e {data_fim}")
 
             if not funcionarios:
                 exibir_info("Nenhum funcionario encontrado neste periodo.")
@@ -633,6 +680,8 @@ def _filtrar_por_data_admissao():
 def _filtrar_por_data_demissao():
     """Filtra funcionários por data de demissão"""
     servico = FuncionarioService()
+
+    exibir_cabecalho("FILTRAR POR DATA DE DEMISSAO")
 
     opcao = pedir_selecao(
         "Opcoes de filtro:",
@@ -685,8 +734,8 @@ def _filtrar_por_data_demissao():
 
         elif "periodo" in opcao and "intervalo" in opcao:
             # Filtrar por período
-            data_inicio = _input_data("Data inicial (DD/MM/YYYY):")
-            data_fim = _input_data("Data final (DD/MM/YYYY):")
+            data_inicio = _input_data("Data inicial (YYYY-MM-DD):")
+            data_fim = _input_data("Data final (YYYY-MM-DD):")
 
             if not data_inicio or not data_fim:
                 exibir_erro("Datas invalidas.")
@@ -701,7 +750,7 @@ def _filtrar_por_data_demissao():
 
             funcionarios = list(cursor)
 
-            exibir_cabecalho(f"Funcionarios demitidos entre {formatar_data_br(data_inicio)} e {formatar_data_br(data_fim)}")
+            exibir_cabecalho(f"Funcionarios demitidos entre {data_inicio} e {data_fim}")
 
             if not funcionarios:
                 exibir_info("Nenhum funcionario encontrado neste periodo.")
@@ -888,7 +937,7 @@ def criar_funcionario():
     )
 
     # ==================== DATAS (opcionais) ====================
-    console.print("\n[cyan]DATAS (formato: DD/MM/YYYY ou YYYY-MM-DD, deixe vazio para pular)[/cyan]")
+    console.print("\n[cyan]DATAS (formato: YYYY-MM-DD, deixe vazio para pular)[/cyan]")
 
     data_admissao = _input_data("  Data de admissao:")
     data_nascimento = _input_data("  Data de nascimento:")
@@ -946,6 +995,7 @@ def criar_funcionario():
         if resultado:
             exibir_sucesso("Funcionario criado com sucesso!")
             console.print(f"   ID: [cyan]{resultado}[/cyan]")
+            logger.audit("FUNCIONARIO_CRIADO_INTERFACE", target=f"funcionario:{resultado}", changes={"nome": nome, "lotacao": lotacao})
         else:
             exibir_erro("Falha ao criar funcionario.")
 
@@ -1058,13 +1108,13 @@ def atualizar_funcionario():
                 alteracoes["diretorio_id"] = ObjectId(diretorio_id)
 
         elif opcao == "Data de Admissao":
-            nova_data = _input_data("Nova data de admissao (DD/MM/YYYY):")
+            nova_data = _input_data("Nova data de admissao (YYYY-MM-DD):")
             if nova_data:
                 from datetime import datetime
                 alteracoes["data_admissao"] = datetime.combine(nova_data, datetime.min.time())
 
         elif opcao == "Data de Nascimento":
-            nova_data = _input_data("Nova data de nascimento (DD/MM/YYYY):")
+            nova_data = _input_data("Nova data de nascimento (YYYY-MM-DD):")
             if nova_data:
                 from datetime import datetime
                 alteracoes["data_nascimento"] = datetime.combine(nova_data, datetime.min.time())
@@ -1147,7 +1197,7 @@ def remover_funcionario():
         return
 
     # Solicitar data de demissão
-    data_demissao = _input_data("Data de demissao (DD/MM/YYYY, ENTER para hoje):")
+    data_demissao = _input_data("Data de demissao (YYYY-MM-DD, ENTER para hoje):")
     if not data_demissao:
         data_demissao = date.today()
 
@@ -1496,7 +1546,9 @@ def _exibir_lista_funcionarios(funcionarios: List[Dict[str, Any]]):
     """Exibe lista formatada de funcionários"""
     dados = []
     for func in funcionarios:
+        codigo = func.get("codigo_funcionario")
         dados.append([
+            str(codigo) if codigo else "-",
             func.get("nome", "N/A"),
             func.get("lotacao", "N/A"),
             func.get("status", "N/A")
@@ -1504,7 +1556,7 @@ def _exibir_lista_funcionarios(funcionarios: List[Dict[str, Any]]):
 
     exibir_tabela(
         "Funcionarios",
-        ["Nome", "Lotacao", "Status"],
+        ["Cod", "Nome", "Lotacao", "Status"],
         dados
     )
 
@@ -1531,6 +1583,8 @@ def _exibir_detalhes_funcionario(funcionario: Dict[str, Any]):
     linhas = []
     linhas.append(f"[chave]ID:[/chave] {func_completo.get('_id')}")
     linhas.append(f"[chave]Nome:[/chave] [cyan]{func_completo.get('nome')}[/cyan]")
+    codigo_func = func_completo.get('codigo_funcionario')
+    linhas.append(f"[chave]Codigo:[/chave] {codigo_func or '(nao informado)'}")
     linhas.append(f"[chave]PIS:[/chave] {func_completo.get('pis') or '(nao informado)'}")
     linhas.append(f"[chave]CPF:[/chave] {func_completo.get('cpf') or '(nao informado)'}")
     linhas.append(f"[chave]Lotacao:[/chave] {func_completo.get('lotacao')}")
@@ -1588,16 +1642,16 @@ def _exibir_detalhes_funcionario(funcionario: Dict[str, Any]):
 
 
 def _input_data(mensagem: str) -> Optional[date]:
-    """Solicita uma data do usuário. Aceita DD/MM/YYYY (default) ou YYYY-MM-DD."""
+    """Solicita uma data do usuário no formato YYYY-MM-DD"""
     data_str = pedir_texto(mensagem, obrigatorio=False)
     if not data_str:
         return None
 
-    data_parseada = parse_data_flexivel(data_str, retornar_date=True)
-    if data_parseada is None:
-        exibir_aviso("Data invalida. Use DD/MM/YYYY (ex: 15/08/2026) ou YYYY-MM-DD")
+    try:
+        return date.fromisoformat(data_str)
+    except ValueError:
+        exibir_aviso("Data invalida. Use o formato YYYY-MM-DD")
         return None
-    return data_parseada
 
 
 # ==================== FUNÇÕES DE EXPORTAÇÃO ====================

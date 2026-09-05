@@ -3,7 +3,10 @@ Permite criar, visualizar, atualizar e alterar status de empresas
 """
 
 from typing import Optional, List, Dict, Any
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("interface")
 
 from src.interface.core.components import (
     MenuBuilder,
@@ -143,7 +146,8 @@ def _listar_empresas() -> None:
 
     while True:
         skip = (pagina - 1) * limite
-        resultado = servico.listar_todos(skip=skip, limit=limite)
+        with logger.performance("listar_empresas"):
+            resultado = servico.listar_todos(skip=skip, limit=limite)
 
         empresas = resultado.get('dados', [])
         total = resultado.get('total', 0)
@@ -282,6 +286,7 @@ def _criar_empresa() -> None:
     if empresa_id:
         exibir_sucesso("Empresa criada com sucesso!")
         exibir_info(f"ID: {empresa_id}")
+        logger.audit("EMPRESA_CRIADA_INTERFACE", target=f"empresa:{empresa_id}", changes={"nome": nome, "cnpj": cnpj})
     else:
         exibir_erro("Erro ao criar empresa.")
 
@@ -444,6 +449,7 @@ def _atualizar_empresa() -> None:
 
     if sucesso:
         exibir_sucesso("Empresa atualizada com sucesso!")
+        logger.audit("EMPRESA_ATUALIZADA_INTERFACE", target=f"empresa:{empresa_id}", changes=alteracoes)
         exibir_info("Versao incrementada automaticamente.")
         exibir_info("Historico de alteracoes registrado.")
     else:

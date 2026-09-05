@@ -49,6 +49,12 @@ class FuncionarioMongoDB(BaseModel):
     pis: Optional[str] = Field(default=None, description="PIS do funcionário")
     cpf: Optional[str] = Field(default=None, description="CPF do funcionário")
     
+    # Código do funcionário no sistema de folha (código do PDF/planilha)
+    codigo_funcionario: Optional[int] = Field(
+        default=None,
+        description="Código do funcionário no sistema de folha de pagamento (ex: código do PDF)"
+    )
+    
     # Informações contratuais (opcionais para cadastro incompleto)
     lotacao: Optional[str] = Field(default=None, description="Lotação/departamento")
     contrato: Optional[TipoContrato] = Field(default=None, description="Tipo de contrato")

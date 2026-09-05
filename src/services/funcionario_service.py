@@ -7,11 +7,13 @@ from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone
 import dotenv
 
-from src.utils.logger_config import logger
 from src.utils.dotenv_path import caminho_dotenv
 from src.services.mongodb_connection import MongoDBConnectionPool
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
+from src.services.cache_service import cache_service
 from src.models.funcionario_models import StatusFuncionario, StatusCadastro
+from src.utils.logger_config_v2 import get_logger
+
 
 try:
     from pymongo import ASCENDING
@@ -32,6 +34,8 @@ class FuncionarioService(HistoricoMixin):
     """
 
     def __init__(self, collection_name: str = "funcionarios"):
+
+        self.logger = get_logger("funcionario")
         """
         Inicializa serviço de funcionários usando pool centralizado.
 
@@ -304,6 +308,18 @@ class FuncionarioService(HistoricoMixin):
             # Tentar inserção normal
             try:
                 resultado = self.colecao.insert_one(doc)
+
+                if resultado and resultado.inserted_id:
+
+                    self.logger.audit(
+
+                        action="REGISTRO_CRIADO",
+
+                        target=f"{self.collection_name}:{resultado.inserted_id}",
+
+                        changes={'dados': str(doc)[:200]}
+
+                    )
                 id_funcionario = str(resultado.inserted_id)
                 
                 logger.info(f"✓ Funcionário criado: {doc.get('nome')} (ID: {id_funcionario})")
@@ -928,6 +944,24 @@ class FuncionarioService(HistoricoMixin):
                 {"_id": obj_id},
                 {"$set": alteracoes}
             )
+
+            
+            if resultado and resultado.modified_count > 0:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_ATUALIZADO",
+
+            
+                    target=f"{self.collection_name}",
+
+            
+                    changes={'operacao': 'update'}
+
+            
+                )
             
             if resultado.modified_count > 0:
                 campos = ", ".join([k for k in alteracoes.keys() if k != 'atualizado_em'])
@@ -971,6 +1005,13 @@ class FuncionarioService(HistoricoMixin):
                     }
                 }
             )
+            
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}:{funcionario_id}",
+                    changes={'status': 'inativo'}
+                )
             
             if resultado.modified_count > 0:
                 logger.info(f"✓ Funcionário {funcionario_id} marcado como inativo")
@@ -1035,6 +1076,18 @@ class FuncionarioService(HistoricoMixin):
                 {"_id": func_obj_id},
                 {"$addToSet": {"empresas_ids": emp_obj_id}}
             )
+
+            if resultado and resultado.modified_count > 0:
+
+                self.logger.audit(
+
+                    action="REGISTRO_ATUALIZADO",
+
+                    target=f"{self.collection_name}",
+
+                    changes={'operacao': 'update'}
+
+                )
             
             if resultado.modified_count > 0:
                 logger.info(f"✓ Empresa {empresa_id} adicionada ao funcionário {funcionario_id}")

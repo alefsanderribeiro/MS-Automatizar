@@ -1,6 +1,6 @@
 # Upgrade GOWA para v9.0.0 — Análise e Plano de Ajuste
 
-**Data:** 2026-08-01 (sanitizado para versão pública em 2026-08-12)
+**Data:** 2026-08-01
 **Status:** ✅ Concluído — código ajustado e análise validada (ver seção de confirmação ao final)
 
 Análise das mudanças do **go-whatsapp-web-multidevice (GOWA)** da v8.x para a **v9.0.0**, focada no impacto para o envio de **folhas de ponto** e **holerites** pelo WhatsApp.
@@ -141,9 +141,9 @@ Analisei a **OpenAPI oficial** (`docs/openapi.yaml`), o **código-fonte** (`src/
 - **Nosso código ANTES enviava `Authorization: Bearer {WHATSAPP_API_KEY}` (ou nada) → teria levado 401 na v9.**
 - **AJUSTE:** `whatsapp_service._get_headers()` agora envia `Authorization: Basic base64(user:secret)` quando:
   1. `WHATSAPP_BASIC_AUTH` está definido (novo, explícito), ou
-  2. `WHATSAPP_API_KEY` contém `:` (interpretado como `user:secret` — com valor no formato `usuario:senha` neste campo), ou
+  2. `WHATSAPP_API_KEY` contém `:` (interpretado como `user:secret` — o `.env` atual já usa `alefsander:.Alefe...` neste campo), ou
   3. cai para `Bearer` só como compat. legado v7 quando api_key é token simples.
-- **`.env` do cliente não muda** (o valor `usuario:senha` no `WHATSAPP_API_KEY` passa a ser tratado como Basic Auth automaticamente). Recomendado migrar para `WHATSAPP_BASIC_AUTH` explícito.
+- **`.env` do cliente não muda** (o valor `alefsander:senha` no `WHATSAPP_API_KEY` passa a ser tratado como Basic Auth automaticamente). Recomendado migrar para `WHATSAPP_BASIC_AUTH` explícito.
 
 **2. `/app/qr` REMOVIDO na v9**
 - `GET /app/qr` **não existe mais** na OpenAPI v9. O QR agora vem de `GET /app/login` → `results.qr_link` (URL para `statics/.../qrcode/*.png`), e por-device em `GET /devices/:device_id/login`.
@@ -151,7 +151,7 @@ Analisei a **OpenAPI oficial** (`docs/openapi.yaml`), o **código-fonte** (`src/
 
 ### Ajustes de Deploy (docker-compose) — FEITO
 - Imagem pinada em `aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0` (tag existe no Docker Hub).
-- `APP_UI_ENABLED=false` + `APP_UI_AUTO_UPDATE=false` → deploy **puro de API**, sem depender de download do GitHub no boot (ideal para servidor em rede restrita/air-gapped).
+- `APP_UI_ENABLED=false` + `APP_UI_AUTO_UPDATE=false` → deploy **puro de API**, sem depender de download do GitHub no boot (ideal para servidor via Tailscale/air-gapped).
 - **Healthcheck corrigido:** passava a usar `http://localhost:3000/app/status` (que com auth retorna 401). Agora usa `http://localhost:3000/health` (endpoint público, sem auth).
 - Mongodb/Redis: preservados (o compose também ganhou o workaround `GLIBC_TUNABLES=glibc.pthread.rseq=1` no MongoDB para kernels 6.19–7.0.13 — JIRA SERVER-121912).
 
@@ -162,9 +162,9 @@ Analisei a **OpenAPI oficial** (`docs/openapi.yaml`), o **código-fonte** (`src/
 
 ### Arquivos alterados
 - `src/services/whatsapp_service.py` — Basic Auth + `obter_qr_code` v9/v8.
-- `docker-compose.yml` — imagem v9.0.0, env de UI, healthcheck `/health`.
-- `.env.example` — adicionado `WHATSAPP_BASIC_AUTH` (docs).
-- `docs/UPGRADE_GOWA_9.md` — este documento.
+- `docker-compose.ms-automatizar.yml` — imagem v9.0.0, env de UI, healthcheck `/health`.
+- `.env_exemplo` — adicionado `WHATSAPP_BASIC_AUTH` (docs).
+- `docs/UPGRADE_GOWA_9.md` — esta seção.
 
 ---
 

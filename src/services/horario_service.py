@@ -14,12 +14,14 @@ from datetime import datetime, timezone
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.models.horario_models import StatusHorario
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.cache_service import cache_service
-from src.services import cache_keys
 from src.services.mongodb_connection import MongoDBConnectionPool
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("horario")
+
 
 # Tentativa de importação do MongoDB
 try:
@@ -191,28 +193,27 @@ class HorarioService(HistoricoMixin):
         except Exception as e:
             logger.error(f"Erro ao carregar cache de horários: {e}")
     
-    def _invalidar_cache(self, registro_id=None) -> None:
+    def _invalidar_cache(self) -> None:
         """
-        Invalida o cache de horários (memória + Redis) de forma direcionada.
-
-        - ``registro_id`` informado: invalida apenas a chave do registro. A
-          próxima leitura usa cache-aside e repopula SEM recarregar a coleção
-          inteira.
-        - ``registro_id`` None (ex: criação): invalida o prefixo ``horarios:*``.
-
-        Obs: não há invalidação indexada por nome aqui — a busca por nome lê
-        direto do Mongo, portanto não há cache a invalidar.
+        Invalida TODO o cache de horários (memória + Redis).
+        
+        Deve ser chamado após operações de CREATE, UPDATE ou DELETE
+        para garantir que próximas leituras busquem dados atualizados.
+        
+        Após invalidação, próxima busca recarregará o cache automaticamente.
         """
         try:
-            if registro_id is not None:
-                self._cache_horarios.pop(str(registro_id), None)
-                self.cache.invalidate(cache_keys.horario_key(registro_id))
-            else:
-                # Limpar cache local
-                self._cache_horarios.clear()
-                # Limpar cache Redis (todas as chaves horarios:*)
-                deleted_count = self.cache.invalidate(cache_keys.horarios_prefix())
-                logger.debug(f"🗑️ Cache de horários invalidado: {deleted_count} chaves removidas do Redis")
+            # Limpar cache local
+            self._cache_horarios.clear()
+            
+            # Limpar cache Redis (todas as chaves horarios:*)
+            deleted_count = self.cache.invalidate("horarios:*")
+            
+            logger.debug(f"🗑️ Cache de horários invalidado: {deleted_count} chaves removidas do Redis")
+            
+            # Recarregar cache imediatamente para próximas buscas
+            self._carregar_cache_completo()
+            
         except Exception as e:
             logger.error(f"Erro ao invalidar cache de horários: {e}")
     
@@ -291,22 +292,14 @@ class HorarioService(HistoricoMixin):
         Returns:
             Dicionário com os dados do horário ou None
         """
-        cache_key = cache_keys.horario_key(horario_id)
+        if not self.disponivel:
+            logger.warning("MongoDB não disponível para busca")
+            return None
         
-        # Verificar cache local primeiro (mais rápido - O(1))
+        # Verificar cache primeiro
         if horario_id in self._cache_horarios:
-            logger.debug(f"✓ Horário encontrado no cache local: {horario_id}")
+            logger.debug(f"✓ Horário encontrado no cache: {horario_id}")
             return self._cache_horarios[horario_id]
-        
-        # Verificar cache Redis (cache-aside: hit evita query no Mongo)
-        try:
-            horario_redis = self.cache.get(cache_key)
-            if horario_redis:
-                self._cache_horarios[horario_id] = horario_redis
-                logger.debug(f"✓ Horário encontrado no cache Redis: {horario_id}")
-                return horario_redis
-        except Exception:
-            pass
         
         try:
             # Converter string para ObjectId
@@ -319,11 +312,9 @@ class HorarioService(HistoricoMixin):
             documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
-                # Cache-aside: popular cache local + Redis (com TTL)
+                # Adicionar ao cache
                 self._cache_horarios[horario_id] = documento
-                ttl = cache_keys.ttl_padrao()
-                self.cache.set(cache_key, documento, ttl=ttl)
-                logger.debug(f"✓ Horário encontrado por ID (cache miss): {documento.get('descricao')}")
+                logger.debug(f"✓ Horário encontrado por ID: {documento.get('descricao')}")
                 return documento
             else:
                 logger.debug(f"✗ Horário não encontrado pelo ID: {horario_id}")
@@ -389,8 +380,20 @@ class HorarioService(HistoricoMixin):
             
             # Inserir no MongoDB
             resultado = self.colecao.insert_one(doc)
+
+            if resultado and resultado.inserted_id:
+
+                self.logger.audit(
+
+                    action="REGISTRO_CRIADO",
+
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+                    changes={'dados': str(doc)[:200]}
+
+                )
             
-            # Invalidar cache (novo horário; prefixo todo é seguro)
+            # Invalidar cache
             self._invalidar_cache()
             
             logger.info(f"✓ Horário criado: {horario_modelo.descricao} - ID: {resultado.inserted_id}")
@@ -449,13 +452,28 @@ class HorarioService(HistoricoMixin):
                 {"_id": obj_id},
                 {"$set": alteracoes}
             )
+
+            
+            if resultado and resultado.modified_count > 0:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_ATUALIZADO",
+
+            
+                    target=f"{self.collection_name}",
+
+            
+                    changes={'operacao': 'update'}
+
+            
+                )
             
             if resultado.modified_count > 0:
-                # Invalidação direcionada por ID; renome limpa todo o prefixo (raro)
-                if 'descricao' in alteracoes:
-                    self._invalidar_cache()
-                else:
-                    self._invalidar_cache(registro_id=object_id)
+                # Invalidar cache
+                self._invalidar_cache()
                 campos = ", ".join([k for k in alteracoes.keys() if k not in ['atualizado_em', 'descricao_normalizada']])
                 logger.info(f"✓ Horário {object_id} atualizado - campos: {campos}")
                 return True
@@ -493,10 +511,22 @@ class HorarioService(HistoricoMixin):
                 {"_id": obj_id},
                 update_doc
             )
+
+            if resultado and resultado.modified_count > 0:
+
+                self.logger.audit(
+
+                    action="REGISTRO_ATUALIZADO",
+
+                    target=f"{self.collection_name}",
+
+                    changes={'operacao': 'update'}
+
+                )
             
             if resultado.modified_count > 0:
-                # Invalidação direcionada por ID
-                self._invalidar_cache(registro_id=horario_id)
+                # Invalidar cache
+                self._invalidar_cache()
                 logger.info(f"✓ Horário atualizado: {horario_modelo.descricao}")
                 return True
             else:
@@ -546,9 +576,16 @@ class HorarioService(HistoricoMixin):
                 }
             )
             
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
+            
             if resultado.modified_count > 0:
-                # Invalidação direcionada por ID
-                self._invalidar_cache(registro_id=horario_id)
+                # Invalidar cache
+                self._invalidar_cache()
                 logger.info(f"✓ Horário marcado como inativo: {horario_id}")
                 return True
             else:
@@ -617,11 +654,23 @@ class HorarioService(HistoricoMixin):
             
             doc_horario = horario.to_mongo_insert()
             resultado = self.colecao.insert_one(doc_horario)
+
+            if resultado and resultado.inserted_id:
+
+                self.logger.audit(
+
+                    action="REGISTRO_CRIADO",
+
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+                    changes={'dados': str(doc_horario)[:200]}
+
+                )
             
             # Adicionar o ID gerado
             doc_horario['_id'] = resultado.inserted_id
             
-            # Invalidar cache (novo horário auto-criado; prefixo todo é seguro)
+            # Invalidar cache
             self._invalidar_cache()
             
             logger.info(f"✓ Horário auto-criado: {descricao_horario} - ID: {resultado.inserted_id}")

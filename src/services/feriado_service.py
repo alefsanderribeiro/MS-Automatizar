@@ -12,17 +12,15 @@ from datetime import datetime, timezone, date
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.models.feriado_models import (
     FeriadoMongoDB, 
     StatusFeriado, 
     TipoFeriado,
     FERIADOS_NACIONAIS_FIXOS
 )
+from src.utils.logger_config_v2 import get_logger
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.mongodb_connection import MongoDBConnectionPool
-from src.services.cache_service import cache_service
-from src.services import cache_keys
 
 # Tentativa de importação do MongoDB
 try:
@@ -32,6 +30,9 @@ try:
     MONGODB_DISPONIVEL = True
 except ImportError:
     MONGODB_DISPONIVEL = False
+
+logger = get_logger("feriado")
+if not MONGODB_DISPONIVEL:
     logger.warning("PyMongo não instalado - FeriadoService ficará limitado")
 
 
@@ -80,10 +81,6 @@ class FeriadoService(HistoricoMixin):
             self.db_name = db_name
             self.collection_name = collection_name
             
-            # Cache service (Redis + memória) para os feriados — dados de
-            # referência pequenos e quase imutáveis (leitura frequente, escrita rara)
-            self.cache = cache_service
-            
             # Usar pool centralizado em vez de criar novo MongoClient
             self.pool = MongoDBConnectionPool()
             self.db = self.pool.get_database()
@@ -117,18 +114,6 @@ class FeriadoService(HistoricoMixin):
             self.db = None
             self.colecao = None
             self._disponivel = False
-    
-    def _invalidar_cache(self) -> None:
-        """
-        Invalida todo o cache de feriados (memória + Redis).
-
-        Coleção pequena e escrita rara → invalidar o prefixo inteiro
-        ``feriados:*`` é barato e elimina risco de *stale*.
-        """
-        try:
-            self.cache.invalidate(cache_keys.feriados_prefix())
-        except Exception as e:
-            logger.error(f"Erro ao invalidar cache de feriados: {e}")
     
     @property
     def disponivel(self) -> bool:
@@ -175,8 +160,19 @@ class FeriadoService(HistoricoMixin):
         try:
             doc = feriado.to_mongo_insert()
             resultado = self.colecao.insert_one(doc)
+
+            if resultado and resultado.inserted_id:
+
+                self.logger.audit(
+
+                    action="REGISTRO_CRIADO",
+
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+                    changes={'dados': str(doc)[:200]}
+
+                )
             feriado_id = str(resultado.inserted_id)
-            self._invalidar_cache()
             logger.info(f"✓ Feriado criado: {feriado.descricao} ({feriado.data})")
             return feriado_id
         except DuplicateKeyError:
@@ -233,27 +229,10 @@ class FeriadoService(HistoricoMixin):
         try:
             # Converter date para datetime para MongoDB
             data_dt = datetime.combine(data, datetime.min.time())
-            
-            # Cache-aside por data (chave: feriados:data:{YYYY-MM-DD})
-            cache_key = f"feriados:data:{data.isoformat()}"
-            try:
-                cached = self.cache.get(cache_key)
-                if cached is not None:
-                    return cached or None
-            except Exception:
-                pass
-            
             doc = self.colecao.find_one({
                 "data": data_dt,
                 "status": StatusFeriado.ATIVO.value
             })
-
-            # Apenas cacheia acertos (hit). Não grava sentinela de miss (None)
-            # no Redis: como `get` aqui trata None como miss, esse escritor
-            # não traria nenhum benefício e apenas poluiria o cache.
-            if doc:
-                ttl = cache_keys.ttl_padrao()
-                self.cache.set(cache_key, doc, ttl=ttl)
             return doc
         except Exception as e:
             logger.error(f"Erro ao buscar feriado por data: {e}")
@@ -277,23 +256,11 @@ class FeriadoService(HistoricoMixin):
             data_inicio_dt = datetime.combine(data_inicio, datetime.min.time())
             data_fim_dt = datetime.combine(data_fim, datetime.max.time())
             
-            # Cache-aside por período (chave: feriados:periodo:{inicio}_{fim})
-            cache_key = cache_keys.feriado_periodo_key(data_inicio, data_fim)
-            try:
-                cached = self.cache.get(cache_key)
-                if cached is not None:
-                    # Converter de volta para list (json round-trip preserva list)
-                    return list(cached)
-            except Exception:
-                pass
-            
             feriados = list(self.colecao.find({
                 "data": {"$gte": data_inicio_dt, "$lte": data_fim_dt},
                 "status": StatusFeriado.ATIVO.value
             }).sort("data", ASCENDING))
             
-            ttl = cache_keys.ttl_padrao()
-            self.cache.set(cache_key, feriados, ttl=ttl)
             return feriados
         except Exception as e:
             logger.error(f"Erro ao listar feriados por período: {e}")
@@ -412,9 +379,26 @@ class FeriadoService(HistoricoMixin):
                 {"_id": obj_id},
                 {"$set": alteracoes}
             )
+
+            
+            if resultado and resultado.modified_count > 0:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_ATUALIZADO",
+
+            
+                    target=f"{self.collection_name}",
+
+            
+                    changes={'operacao': 'update'}
+
+            
+                )
             
             if resultado.modified_count > 0:
-                self._invalidar_cache()
                 logger.info(f"✓ Feriado atualizado: {object_id}")
                 return True
             return False
@@ -436,7 +420,6 @@ class FeriadoService(HistoricoMixin):
         try:
             resultado = self.colecao.delete_one({"_id": ObjectId(feriado_id)})
             if resultado.deleted_count > 0:
-                self._invalidar_cache()
                 logger.info(f"✓ Feriado removido: {feriado_id}")
                 return True
             return False

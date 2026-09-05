@@ -12,17 +12,15 @@ from datetime import datetime, timezone
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.models.template_mensagem_models import (
     TipoTemplateEnum,
     StatusTemplate,
     TemplateMensagemMongoDB,
     criar_templates_padrao,
 )
+from src.utils.logger_config_v2 import get_logger
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.mongodb_connection import MongoDBConnectionPool
-from src.services.cache_service import cache_service
-from src.services import cache_keys
 
 # Tentativa de importação do MongoDB
 try:
@@ -32,6 +30,9 @@ try:
     MONGODB_DISPONIVEL = True
 except ImportError:
     MONGODB_DISPONIVEL = False
+
+logger = get_logger("template")
+if not MONGODB_DISPONIVEL:
     logger.warning("PyMongo não instalado - TemplateMensagemService ficará limitado")
 
 
@@ -53,9 +54,6 @@ class TemplateMensagemService(HistoricoMixin):
         
         # Cache em memória
         self._cache_templates: Dict[str, Dict[str, Any]] = {}
-        
-        # Cache service (Redis + memória) para persistência entre processos
-        self.cache = cache_service
         
         if not MONGODB_DISPONIVEL:
             logger.error("MongoDB não disponível para Templates")
@@ -173,16 +171,8 @@ class TemplateMensagemService(HistoricoMixin):
             logger.warning(f"Erro ao criar templates padrão: {e}")
     
     def _invalidar_cache(self) -> None:
-        """Limpa cache (memória local + Redis).
-
-        Templates são pequenos e escritos de forma rara → invalidar o prefixo
-        ``templates:*`` é barato e garante consistência entre processos.
-        """
+        """Limpa cache"""
         self._cache_templates.clear()
-        try:
-            self.cache.invalidate(cache_keys.templates_prefix())
-        except Exception as e:
-            logger.warning(f"Erro ao invalidar cache Redis de templates: {e}")
     
     # ==================== CRUD ====================
     
@@ -202,6 +192,24 @@ class TemplateMensagemService(HistoricoMixin):
             doc = template.model_dump()
             
             resultado = self.colecao.insert_one(doc)
+
+            
+            if resultado and resultado.inserted_id:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_CRIADO",
+
+            
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+            
+                    changes={'dados': str(doc)[:200]}
+
+            
+                )
             self._invalidar_cache()
             
             logger.info(f"✓ Template criado: {dados.get('nome')} (ID: {resultado.inserted_id})")
@@ -219,26 +227,14 @@ class TemplateMensagemService(HistoricoMixin):
         if not self._disponivel:
             return None
         
-        # Verificar cache (memória local)
+        # Verificar cache
         if template_id in self._cache_templates:
             return self._cache_templates[template_id]
-        
-        # Verificar cache Redis (cache-aside)
-        cache_key = cache_keys.template_key(template_id)
-        try:
-            cached = self.cache.get(cache_key)
-            if cached is not None:
-                self._cache_templates[template_id] = cached
-                return cached
-        except Exception:
-            pass
         
         try:
             doc = self.colecao.find_one({"_id": ObjectId(template_id)})
             if doc:
                 self._cache_templates[template_id] = doc
-                ttl = cache_keys.ttl_padrao()
-                self.cache.set(cache_key, doc, ttl=ttl)
             return doc
         except Exception as e:
             logger.error(f"Erro ao buscar template: {e}")
@@ -254,21 +250,7 @@ class TemplateMensagemService(HistoricoMixin):
             nfkd = unicodedata.normalize('NFKD', nome)
             nome_norm = ''.join([c for c in nfkd if not unicodedata.combining(c)]).lower()
             
-            # Cache-aside por nome
-            cache_key = cache_keys.template_nome_key(nome_norm)
-            try:
-                cached = self.cache.get(cache_key)
-                if cached is not None:
-                    return cached or None
-            except Exception:
-                pass
-            
-            doc = self.colecao.find_one({"nome_normalizado": nome_norm})
-            # Apenas cacheia hit; não grava sentinela None (get trata None como miss).
-            if doc:
-                ttl = cache_keys.ttl_padrao()
-                self.cache.set(cache_key, doc, ttl=ttl)
-            return doc
+            return self.colecao.find_one({"nome_normalizado": nome_norm})
         except Exception as e:
             logger.error(f"Erro ao buscar template por nome: {e}")
             return None
@@ -311,27 +293,11 @@ class TemplateMensagemService(HistoricoMixin):
             return None
         
         try:
-            tipo_value = tipo.value if isinstance(tipo, TipoTemplateEnum) else tipo
-            
-            # Cache-aside por tipo
-            cache_key = cache_keys.template_tipo_key(str(tipo_value))
-            try:
-                cached = self.cache.get(cache_key)
-                if cached is not None:
-                    return cached or None
-            except Exception:
-                pass
-            
-            doc = self.colecao.find_one({
-                "tipo": tipo_value,
+            return self.colecao.find_one({
+                "tipo": tipo.value if isinstance(tipo, TipoTemplateEnum) else tipo,
                 "is_padrao": True,
                 "status": StatusTemplate.ATIVO.value
             })
-            # Apenas cacheia hit; não grava sentinela None (get trata None como miss).
-            if doc:
-                ttl = cache_keys.ttl_padrao()
-                self.cache.set(cache_key, doc, ttl=ttl)
-            return doc
         except Exception as e:
             logger.error(f"Erro ao buscar template padrão: {e}")
             return None
@@ -377,6 +343,13 @@ class TemplateMensagemService(HistoricoMixin):
                 {"_id": ObjectId(template_id)},
                 update_doc
             )
+            
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             
             self._invalidar_cache()
             return resultado.modified_count > 0
@@ -436,6 +409,13 @@ class TemplateMensagemService(HistoricoMixin):
                     "$inc": {"versao": 1}
                 }
             )
+            
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
             
             self._invalidar_cache()
             return resultado.modified_count > 0

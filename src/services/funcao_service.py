@@ -14,12 +14,12 @@ from datetime import datetime, timezone
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
 from src.models.funcao_models import StatusFuncao
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.cache_service import cache_service
-from src.services import cache_keys
 from src.services.mongodb_connection import MongoDBConnectionPool
+from src.utils.logger_config_v2 import get_logger
+
 
 # Tentativa de importação do MongoDB
 try:
@@ -29,6 +29,9 @@ try:
     MONGODB_DISPONIVEL = True
 except ImportError:
     MONGODB_DISPONIVEL = False
+
+logger = get_logger("funcao")
+if not MONGODB_DISPONIVEL:
     logger.warning("PyMongo não instalado - FuncaoService ficará limitado")
 
 
@@ -193,31 +196,27 @@ class FuncaoService(HistoricoMixin):
         except Exception as e:
             logger.error(f"Erro ao carregar cache de funções: {e}")
     
-    def _invalidar_cache(self, registro_id=None) -> None:
+    def _invalidar_cache(self) -> None:
         """
-        Invalida o cache de funções (memória + Redis) de forma direcionada.
-
-        - ``registro_id`` informado: invalida apenas a chave do registro. A
-          próxima leitura usa cache-aside e repopula SEM recarregar a coleção
-          inteira.
-        - ``registro_id`` None (ex: criação): invalida o prefixo ``funcoes:*``
-          (barato, pois a coleção é pequena e a escrita rara).
-
-        Obs: não há invalidação indexada por nome aqui — a busca por nome lê
-        direto do Mongo, portanto não há cache a invalidar.
+        Invalida TODO o cache de funções (memória + Redis).
+        
+        Deve ser chamado após operações de CREATE, UPDATE ou DELETE
+        para garantir que próximas leituras busquem dados atualizados.
+        
+        Após invalidação, próxima busca recarregará o cache automaticamente.
         """
         try:
-            if registro_id is not None:
-                # Remover entrada do cache local
-                self._cache_funcoes.pop(str(registro_id), None)
-                # Invalidação direcionada por ID (sem full-reload do Mongo)
-                self.cache.invalidate(cache_keys.funcao_key(registro_id))
-            else:
-                # Limpar cache local
-                self._cache_funcoes.clear()
-                # Limpar cache Redis (todas as chaves funcoes:*)
-                deleted_count = self.cache.invalidate(cache_keys.funcoes_prefix())
-                logger.debug(f"🗑️ Cache de funções invalidado: {deleted_count} chaves removidas do Redis")
+            # Limpar cache local
+            self._cache_funcoes.clear()
+            
+            # Limpar cache Redis (todas as chaves funcoes:*)
+            deleted_count = self.cache.invalidate("funcoes:*")
+            
+            logger.debug(f"🗑️ Cache de funções invalidado: {deleted_count} chaves removidas do Redis")
+            
+            # Recarregar cache imediatamente para próximas buscas
+            self._carregar_cache_completo()
+            
         except Exception as e:
             logger.error(f"Erro ao invalidar cache de funções: {e}")
     
@@ -300,22 +299,10 @@ class FuncaoService(HistoricoMixin):
             logger.warning("MongoDB não disponível para busca")
             return None
         
-        cache_key = cache_keys.funcao_key(funcao_id)
-        
-        # Verificar cache local primeiro (mais rápido - O(1))
+        # Verificar cache primeiro
         if funcao_id in self._cache_funcoes:
-            logger.debug(f"✓ Função encontrada no cache local: {funcao_id}")
+            logger.debug(f"✓ Função encontrada no cache: {funcao_id}")
             return self._cache_funcoes[funcao_id]
-        
-        # Verificar cache Redis (cache-aside: hit evita query no Mongo)
-        try:
-            funcao_redis = self.cache.get(cache_key)
-            if funcao_redis:
-                self._cache_funcoes[funcao_id] = funcao_redis
-                logger.debug(f"✓ Função encontrada no cache Redis: {funcao_id}")
-                return funcao_redis
-        except Exception:
-            pass
         
         try:
             # Converter string para ObjectId
@@ -328,11 +315,9 @@ class FuncaoService(HistoricoMixin):
             documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
-                # Cache-aside: popular cache local + Redis (com TTL)
+                # Adicionar ao cache
                 self._cache_funcoes[funcao_id] = documento
-                ttl = cache_keys.ttl_padrao()
-                self.cache.set(cache_key, documento, ttl=ttl)
-                logger.debug(f"✓ Função encontrada por ID (cache miss): {documento.get('nome')}")
+                logger.debug(f"✓ Função encontrada por ID: {documento.get('nome')}")
                 return documento
             else:
                 logger.debug(f"✗ Função não encontrada pelo ID: {funcao_id}")
@@ -422,8 +407,20 @@ class FuncaoService(HistoricoMixin):
             
             # Inserir no MongoDB
             resultado = self.colecao.insert_one(doc)
+
+            if resultado and resultado.inserted_id:
+
+                self.logger.audit(
+
+                    action="REGISTRO_CRIADO",
+
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+                    changes={'dados': str(doc)[:200]}
+
+                )
             
-            # Invalidar cache (nova função pode afetar nome/lista → prefixo todo)
+            # Invalidar cache
             self._invalidar_cache()
             
             logger.info(f"✓ Função criada: {funcao_modelo.nome} - ID: {resultado.inserted_id}")
@@ -482,13 +479,28 @@ class FuncaoService(HistoricoMixin):
                 {"_id": obj_id},
                 {"$set": alteracoes}
             )
+
+            
+            if resultado and resultado.modified_count > 0:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_ATUALIZADO",
+
+            
+                    target=f"{self.collection_name}",
+
+            
+                    changes={'operacao': 'update'}
+
+            
+                )
             
             if resultado.modified_count > 0:
-                # Invalidação direcionada por ID; renome limpa todo o prefixo (raro)
-                if "nome" in alteracoes:
-                    self._invalidar_cache()
-                else:
-                    self._invalidar_cache(registro_id=object_id)
+                # Invalidar cache
+                self._invalidar_cache()
                 campos = ", ".join([k for k in alteracoes.keys() if k not in ['atualizado_em', 'nome_normalizado']])
                 logger.info(f"✓ Função {object_id} atualizada - campos: {campos}")
                 return True
@@ -526,10 +538,22 @@ class FuncaoService(HistoricoMixin):
                 {"_id": obj_id},
                 update_doc
             )
+
+            if resultado and resultado.modified_count > 0:
+
+                self.logger.audit(
+
+                    action="REGISTRO_ATUALIZADO",
+
+                    target=f"{self.collection_name}",
+
+                    changes={'operacao': 'update'}
+
+                )
             
             if resultado.modified_count > 0:
-                # Invalidação direcionada por ID
-                self._invalidar_cache(registro_id=funcao_id)
+                # Invalidar cache
+                self._invalidar_cache()
                 logger.info(f"✓ Função atualizada: {funcao_modelo.nome}")
                 return True
             else:
@@ -579,9 +603,16 @@ class FuncaoService(HistoricoMixin):
                 }
             )
             
+            if resultado and resultado.modified_count > 0:
+                self.logger.audit(
+                    action="REGISTRO_ATUALIZADO",
+                    target=f"{self.collection_name}",
+                    changes={'operacao': 'update'}
+                )
+            
             if resultado.modified_count > 0:
-                # Invalidação direcionada por ID
-                self._invalidar_cache(registro_id=funcao_id)
+                # Invalidar cache
+                self._invalidar_cache()
                 logger.info(f"✓ Função marcada como inativa: {funcao_id}")
                 return True
             else:
@@ -656,11 +687,23 @@ class FuncaoService(HistoricoMixin):
             
             doc_funcao = funcao.to_mongo_insert()
             resultado = self.colecao.insert_one(doc_funcao)
+
+            if resultado and resultado.inserted_id:
+
+                self.logger.audit(
+
+                    action="REGISTRO_CRIADO",
+
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+                    changes={'dados': str(doc_funcao)[:200]}
+
+                )
             
             # Adicionar o ID gerado
             doc_funcao['_id'] = resultado.inserted_id
             
-            # Invalidar cache (nova função auto-criada; prefixo todo é seguro)
+            # Invalidar cache
             self._invalidar_cache()
             
             logger.info(f"✓ Função auto-criada: {nome_funcao} - ID: {resultado.inserted_id}")

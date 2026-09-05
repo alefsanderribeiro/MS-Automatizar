@@ -13,7 +13,7 @@ import re
 # Imports dos serviços que permanecem separados
 from src.services.analise_ai_service import GeminiService, MistralService
 from src.services.cache_ocr_service import cache_ocr
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
 
 # Define o locale para português do Brasil, de forma segura (nunca quebra o
 # import em sistemas que não têm o locale instalado — ex.: muitos servidores
@@ -74,8 +74,10 @@ class PdfProcessorService(IPdfProcessor):
     """Serviço para processamento de arquivos PDF"""
     
     def __init__(self, diretorio_processamento: Path):
+
+        self.logger = get_logger("holerite")
         self.diretorio_processamento = diretorio_processamento
-        self.coordenadas_cabecalho = ((120, 785), (363, 795))
+        self.coordenadas_cabecalho = ((50, 785), (363, 795))
     
     def extrair_cabecalho(self, arquivo: Path) -> Path:
         self.diretorio_processamento.mkdir(parents=True, exist_ok=True)

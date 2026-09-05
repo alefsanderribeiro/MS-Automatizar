@@ -9,8 +9,12 @@ Responsabilidades:
 from datetime import datetime
 from typing import Optional
 
-from src.utils.logger_config import logger
 from src.models.envio_folha_ponto_models import TipoEnvioEnum
+from src.utils.logger_config_v2 import get_logger
+
+# Logger do módulo
+logger = get_logger("interface")
+
 from src.processadores.envio_folha_ponto_orquestrador import (
     envio_folha_ponto_orquestrador,
     RelatorioEnvio,

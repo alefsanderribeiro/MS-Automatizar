@@ -8,12 +8,12 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 import dotenv
 
-from src.services.cache_service import cache_service
-from src.services import cache_keys
-from src.utils.logger_config import logger
 from src.utils.dotenv_path import caminho_dotenv
 from src.services.mongodb_connection import MongoDBConnectionPool, retry_mongodb, medir_tempo
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
+from src.services.cache_service import cache_service
+from src.utils.logger_config_v2 import get_logger
+
 
 try:
     from pymongo import ASCENDING
@@ -40,6 +40,8 @@ class EmpresaService(HistoricoMixin):
     """
 
     def __init__(self, collection_name: str = "empresas"):
+
+        self.logger = get_logger("empresa")
         """
         Inicializa serviço de empresas usando pool centralizado.
 
@@ -157,7 +159,7 @@ class EmpresaService(HistoricoMixin):
                 # Cache local
                 self._cache_empresas[empresa_id] = empresa
                 # Preparar para cache Redis
-                cache_data_redis[cache_keys.empresa_key(empresa_id)] = empresa
+                cache_data_redis[f"empresas:{empresa_id}"] = empresa
             
             # Poplar cache Redis em batch (uma operação)
             ttl = int(os.getenv("CACHE_TTL", "300"))  # 5 minutos padrão
@@ -168,24 +170,27 @@ class EmpresaService(HistoricoMixin):
         except Exception as e:
             logger.error(f"Erro ao carregar cache de empresas: {e}")
     
-    def _invalidar_cache(self, registro_id=None) -> None:
+    def _invalidar_cache(self) -> None:
         """
-        Invalida o cache de empresas (memória + Redis) de forma direcionada.
-
-        - ``registro_id`` informado: invalida apenas a chave do registro. A
-          próxima leitura usa cache-aside e repopula SEM recarregar a coleção.
-        - ``registro_id`` None (ex: criação): invalida o prefixo ``empresas:*``.
+        Invalida TODO o cache de empresas (memória + Redis).
+        
+        Deve ser chamado após operações de CREATE, UPDATE ou DELETE
+        para garantir que próximas leituras busquem dados atualizados.
+        
+        Após invalidação, próxima busca recarregará o cache automaticamente.
         """
         try:
-            if registro_id is not None:
-                self._cache_empresas.pop(str(registro_id), None)
-                self.cache.invalidate(cache_keys.empresa_key(registro_id))
-            else:
-                # Limpar cache local
-                self._cache_empresas.clear()
-                # Limpar cache Redis (todas as chaves empresas:*)
-                deleted_count = self.cache.invalidate(cache_keys.empresas_prefix())
-                logger.debug(f"🗑️ Cache de empresas invalidado: {deleted_count} chaves removidas do Redis")
+            # Limpar cache local
+            self._cache_empresas.clear()
+            
+            # Limpar cache Redis (todas as chaves empresas:*)
+            deleted_count = self.cache.invalidate("empresas:*")
+            
+            logger.debug(f"🗑️ Cache de empresas invalidado: {deleted_count} chaves removidas do Redis")
+            
+            # Recarregar cache imediatamente para próximas buscas
+            self._carregar_cache_completo()
+            
         except Exception as e:
             logger.error(f"Erro ao invalidar cache de empresas: {e}")
     
@@ -240,7 +245,7 @@ class EmpresaService(HistoricoMixin):
     def buscar_por_nome_ou_simplificado(self, nome_empresa: str, exato: bool = False) -> Optional[Dict[str, Any]]:
         """
         Busca uma empresa primeiro pelo nome_simplificado, com fallback para nome completo.
-        Estratégia para envio multidevice: tenta nome simplificado (ex: "Solucoes") antes do nome completo.
+        Estratégia para envio multidevice: tenta nome simplificado (ex: "Moraes") antes do nome completo.
 
         Args:
             nome_empresa: Nome ou parte do nome da empresa
@@ -414,7 +419,7 @@ class EmpresaService(HistoricoMixin):
             return self._cache_empresas[empresa_id]
         
         # 2. Verificar cache Redis (rápido - O(1) remoto)
-        cache_key = cache_keys.empresa_key(empresa_id)
+        cache_key = f"empresas:{empresa_id}"
         empresa_redis = self.cache.get(cache_key)
         if empresa_redis:
             # Atualizar cache local
@@ -501,6 +506,24 @@ class EmpresaService(HistoricoMixin):
                 doc_empresa.pop('cnpj', None)
             
             resultado = self.colecao.insert_one(doc_empresa)
+
+            
+            if resultado and resultado.inserted_id:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_CRIADO",
+
+            
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+            
+                    changes={'dados': str(doc_empresa)[:200]}
+
+            
+                )
             
             # Adicionar o ID gerado
             doc_empresa['_id'] = resultado.inserted_id
@@ -567,6 +590,18 @@ class EmpresaService(HistoricoMixin):
                 {'$set': documento},
                 upsert=True
             )
+
+            if resultado and resultado.modified_count > 0:
+
+                self.logger.audit(
+
+                    action="REGISTRO_ATUALIZADO",
+
+                    target=f"{self.collection_name}",
+
+                    changes={'operacao': 'update'}
+
+                )
             
             if resultado.upserted_id:
                 logger.info(
@@ -728,11 +763,29 @@ class EmpresaService(HistoricoMixin):
                 {"_id": obj_id},
                 {"$set": {"cnpj": cnpj_limpo}}
             )
+
+            
+            if resultado and resultado.modified_count > 0:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_ATUALIZADO",
+
+            
+                    target=f"{self.collection_name}",
+
+            
+                    changes={'operacao': 'update'}
+
+            
+                )
             
             if resultado.modified_count > 0:
                 logger.info(f"✓ CNPJ atualizado para empresa {empresa_id}: {cnpj_limpo}")
-                # Invalidação direcionada por ID
-                self._invalidar_cache(registro_id=empresa_id)
+                # Invalidar cache
+                self._invalidar_cache()
                 return True
             else:
                 logger.debug(f"CNPJ não foi modificado (já existia?): {empresa_id}")
@@ -793,13 +846,28 @@ class EmpresaService(HistoricoMixin):
                 {"_id": obj_id},
                 {"$set": alteracoes}
             )
+
+            
+            if resultado and resultado.modified_count > 0:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_ATUALIZADO",
+
+            
+                    target=f"{self.collection_name}",
+
+            
+                    changes={'operacao': 'update'}
+
+            
+                )
             
             if resultado.modified_count > 0:
-                # Invalidação direcionada por ID; renome limpa todo o prefixo (raro)
-                if "nome" in alteracoes:
-                    self._invalidar_cache()
-                else:
-                    self._invalidar_cache(registro_id=object_id)
+                # Invalidar cache completo (memória + Redis)
+                self._invalidar_cache()
                 
                 campos = ", ".join([k for k in alteracoes.keys() if k not in ['atualizado_em', 'nome_normalizado']])
                 logger.info(f"✓ Empresa atualizada: {object_id} - campos: {campos}")
@@ -876,6 +944,24 @@ class EmpresaService(HistoricoMixin):
             documento = {k: v for k, v in documento.items() if v is not None}
             
             resultado = self.colecao.insert_one(documento)
+
+            
+            if resultado and resultado.inserted_id:
+
+            
+                self.logger.audit(
+
+            
+                    action="REGISTRO_CRIADO",
+
+            
+                    target=f"{self.collection_name}:{resultado.inserted_id}",
+
+            
+                    changes={'dados': str(documento)[:200]}
+
+            
+                )
             
             logger.info(f"✓ Empresa criada: {nome} - ID: {resultado.inserted_id}")
             

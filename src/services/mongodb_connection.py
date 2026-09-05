@@ -22,7 +22,10 @@ from datetime import datetime
 
 import dotenv
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+# Inicializar logger
+logger = get_logger("mongodb")
 
 # Tentativa de importação do MongoDB
 try:
@@ -70,6 +73,8 @@ class MongoDBConnectionPool:
         return cls._instance
     
     def __init__(self):
+
+        self.logger = get_logger("mongodb")
         """Inicializa o pool de conexões (apenas uma vez)"""
         # Evitar reinicialização
         if MongoDBConnectionPool._initialized:

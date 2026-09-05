@@ -1,11 +1,11 @@
 from datetime import date
-from typing import List
-
 from src.utils.type import bool_type, date_type, list_type
-from src.utils.data_utils import formatar_data_br
 from src.folha_de_ponto import Folha_de_Ponto
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
 
+
+# Logger do módulo
+logger = get_logger("comando")
 
 def arquivo_arguments(parser):
     parser.add_argument('--arquivo', type=str, help='Informa o arquivo.')
@@ -17,7 +17,7 @@ def folha_de_ponto_subcommands(subparsers):
 
     parser_fp_sub1 = subparsers_fp.add_parser('criar', help='Cria as folhas de ponto do sistema.')
     #arquivo_arguments(parser_nfe_sub1)
-    parser_fp_sub1.add_argument('--data', type=date_type, help='Informa a data. (DD/MM/YYYY ex: 15/08/2026)')
+    parser_fp_sub1.add_argument('--data', type=date_type, help='Informa a data. (YYYY-MM-DD)')
     parser_fp_sub1.add_argument('--id_funcionario', default=None, type=list_type, help='ID(s) do(s) funcionário(s). Separe por vírgula.')
     parser_fp_sub1.add_argument('--nome_funcionario', default=None, type=list_type, help='Nome(s) do(s) funcionário(s). Separe por vírgula.')
     parser_fp_sub1.add_argument('--lotacao', default=None, type=list_type, help='Lotação do(s) funcionário(s) para o qual deseja criar a folha de ponto. Separar por vírgula')
@@ -36,7 +36,7 @@ def folha_de_ponto_subcommands(subparsers):
 
     # Novo subcomando para processar e salvar em MongoDB
     parser_fp_sub5 = subparsers_fp.add_parser('mongodb', help='Processa folhas de ponto e salva em MongoDB')
-    parser_fp_sub5.add_argument('--data', type=date_type, help='Informa a data. (DD/MM/YYYY ex: 15/08/2026)', required=False)
+    parser_fp_sub5.add_argument('--data', type=date_type, help='Informa a data. (YYYY-MM-DD)', required=False)
     parser_fp_sub5.add_argument('--id_funcionario', dest='id_funcionario', default=None, type=list_type, help='ID(s) do(s) funcionário(s). Separe por vírgula.')
     parser_fp_sub5.add_argument('--nome_funcionario', dest='nome_funcionario', default=None, type=list_type, help='Nome(s) do(s) funcionário(s). Separe por vírgula.')
     parser_fp_sub5.add_argument('--lotacao', dest='lotacao', default=None, type=list_type, help='Lotação do(s) funcionário(s). Separar por vírgula')
@@ -53,7 +53,7 @@ def folha_de_ponto_subcommands(subparsers):
     parser_fp_sub7 = subparsers_fp.add_parser('criar_mongodb_id', help='Cria folha de ponto a partir de dados do MongoDB usando IDs')
     parser_fp_sub7.add_argument('--funcionario_id', type=str, help='ObjectId do funcionário no MongoDB', required=True)
     parser_fp_sub7.add_argument('--empresa_id', type=str, help='ObjectId da empresa no MongoDB', required=True)
-    parser_fp_sub7.add_argument('--data', type=date_type, help='Data de referência (DD/MM/YYYY ex: 15/08/2026)', required=True)
+    parser_fp_sub7.add_argument('--data', type=date_type, help='Data de referência (YYYY-MM-DD)', required=True)
     parser_fp_sub7.add_argument('--diretorio_destino', type=str, help='Diretório customizado para salvar PDF', required=False)
 
     # Novo subcomando para criar folhas a partir do MongoDB por filtros
@@ -62,42 +62,8 @@ def folha_de_ponto_subcommands(subparsers):
     parser_fp_sub8.add_argument('--funcao', type=str, help='Filtrar por função', required=False)
     parser_fp_sub8.add_argument('--contrato', type=str, help='Filtrar por contrato', required=False)
     parser_fp_sub8.add_argument('--ativo', type=bool_type, help='Filtrar por status ativo (True/False)', required=False)
-    parser_fp_sub8.add_argument('--data', type=date_type, help='Data de referência (DD/MM/YYYY ex: 15/08/2026)', required=True)
+    parser_fp_sub8.add_argument('--data', type=date_type, help='Data de referência (YYYY-MM-DD)', required=True)
     parser_fp_sub8.add_argument('--diretorio_destino', type=str, help='Diretório customizado para salvar PDFs', required=False)
-
-    # ==================== GERENCIAR FOLHAS GERADAS ====================
-
-    # Subcomando: visualizar - visualiza uma folha ja gerada
-    parser_fp_visualizar = subparsers_fp.add_parser('visualizar', help='Visualiza uma folha de ponto ja gerada (por id ou nome)')
-    parser_fp_visualizar.add_argument('--id', type=str, help='ObjectId da folha', required=False)
-    parser_fp_visualizar.add_argument('--nome', type=str, help='Nome (ou parte) do funcionário', required=False)
-    parser_fp_visualizar.add_argument('--mes', type=str, help='Mês YYYY-MM para filtrar', required=False)
-
-    # Subcomando: buscar - busca folhas por nome do funcionario
-    parser_fp_buscar = subparsers_fp.add_parser('buscar', help='Busca folhas de ponto por NOME do funcionário (+ período/status)')
-    parser_fp_buscar.add_argument('--nome', type=str, help='Nome (ou parte) do funcionário', required=False)
-    parser_fp_buscar.add_argument('--mes', type=str, help='Mês YYYY-MM para filtrar', required=False)
-    parser_fp_buscar.add_argument('--status', type=str, help='Status da folha (criada, preenchida, ...)', required=False)
-    parser_fp_buscar.add_argument('--incluir-excluidas', action='store_true', help='Inclui folhas com soft delete', required=False)
-
-    # Subcomando: excluir - soft delete de folha
-    parser_fp_excluir = subparsers_fp.add_parser('excluir', help='Exclui (SOFT DELETE) uma folha de ponto — marca como excluída, nunca remove do banco')
-    parser_fp_excluir.add_argument('--id', type=str, help='ObjectId da folha', required=True)
-    parser_fp_excluir.add_argument('--motivo', type=str, help='Motivo da exclusão', required=False)
-    parser_fp_excluir.add_argument('--force', '-f', action='store_true', help='Não pedir confirmação (mesmo se já enviada)', required=False)
-
-    # Subcomando: editar - edita folha ja gerada
-    parser_fp_editar = subparsers_fp.add_parser('editar', help='Edita folha ja gerada (recalcula totais, regenera PDF, nova versão + histórico)')
-    parser_fp_editar.add_argument('--id', type=str, help='ObjectId da folha', required=True)
-    parser_fp_editar.add_argument('--dia', type=int, help='Número do dia a editar (usar com --hora-entrada etc)', required=False)
-    parser_fp_editar.add_argument('--hora_entrada', type=str, help='Hora de entrada (HH:MM)', required=False)
-    parser_fp_editar.add_argument('--hora_saida', type=str, help='Hora de saída (HH:MM)', required=False)
-    parser_fp_editar.add_argument('--intervalo_inicio', type=str, help='Início do intervalo (HH:MM)', required=False)
-    parser_fp_editar.add_argument('--intervalo_fim', type=str, help='Fim do intervalo (HH:MM)', required=False)
-    parser_fp_editar.add_argument('--tipo_dia', type=str, help='Tipo do dia (NORMAL, FALTA, FERIADO, etc)', required=False)
-    parser_fp_editar.add_argument('--observacoes', type=str, help='Observações do dia', required=False)
-    # Suporta múltiplos --dia para editar vários dias de uma vez
-    parser_fp_editar.add_argument('--diretorio_destino', type=str, help='Diretório customizado para o PDF', required=False)
 
     # ==================== SUBCOMANDOS DE ENVIO ====================
     
@@ -134,52 +100,9 @@ def folha_de_ponto_subcommands(subparsers):
     parser_fp_envio_exec.add_argument('--ids', type=str, help='IDs de contatos específicos (separados por vírgula)')
     parser_fp_envio_exec.add_argument('--force', '-f', action='store_true', help='Não pedir confirmação')
     parser_fp_envio_exec.add_argument('--verbose', '-v', action='store_true', help='Saída detalhada')
-    parser_fp_envio_exec.add_argument('--fonte', type=str, choices=['mongodb', 'planilha'], default=None,
-                                     help='Fonte das configurações de envio (default: MongoDB com fallback planilha)')
-
-    # ==================== SUBCOMANDOS DE CONFIG DE ENVIO (MongoDB) ====================
-
-    # envio-config-criar - cria uma configuração de envio no MongoDB
-    parser_fp_config_criar = subparsers_fp.add_parser('envio-config-criar', help='Cria uma configuração de envio no MongoDB (interativo)')
-
-    # envio-config-listar - lista configurações
-    parser_fp_config_listar = subparsers_fp.add_parser('envio-config-listar', help='Lista configurações de envio no MongoDB')
-    parser_fp_config_listar.add_argument('--todos', action='store_true', help='Inclui configs inativas')
-    parser_fp_config_listar.add_argument('--json', action='store_true', help='Formato JSON')
-
-    # envio-config-buscar - busca configuração
-    parser_fp_config_buscar = subparsers_fp.add_parser('envio-config-buscar', help='Busca configuração de envio')
-    parser_fp_config_buscar.add_argument('--id', type=str, help='ID do documento (ObjectId)')
-    parser_fp_config_buscar.add_argument('--nome', type=str, help='Nome do funcionário (busca parcial)')
-    parser_fp_config_buscar.add_argument('--empresa', type=str, help='Nome da empresa')
-    parser_fp_config_buscar.add_argument('--local', type=str, help='Local/Contrato/Polo')
-
-    # envio-config-editar - edita configuração
-    parser_fp_config_editar = subparsers_fp.add_parser('envio-config-editar', help='Edita configuração de envio (interativo)')
-    parser_fp_config_editar.add_argument('id', help='ID do documento (ObjectId)')
-
-    # envio-config-excluir - exclui (soft delete) configuração
-    parser_fp_config_excluir = subparsers_fp.add_parser('envio-config-excluir', help='Exclui (soft delete) configuração de envio')
-    parser_fp_config_excluir.add_argument('id', help='ID do documento (ObjectId)')
-
-    # envio-config-reativar - reativa configuração excluída
-    parser_fp_config_reativar = subparsers_fp.add_parser('envio-config-reativar', help='Reativa configuração de envio excluída')
-    parser_fp_config_reativar.add_argument('id', help='ID do documento (ObjectId)')
-
-    # envio-config-importar - importa da planilha Excel
-    parser_fp_config_importar = subparsers_fp.add_parser('envio-config-importar', help='Importa configs da planilha Excel para o MongoDB')
-    parser_fp_config_importar.add_argument('--sobrescrever', action='store_true', help='Atualiza configs existentes (mesmo ID)')
-    parser_fp_config_importar.add_argument('--marcar-removidos', action='store_true', help='Marca (soft delete) configs que não estão mais na planilha')
-
-    # envio-config-validar - valida configurações
-    parser_fp_config_validar = subparsers_fp.add_parser('envio-config-validar', help='Valida configurações de envio no MongoDB')
-
-    # envio-config-stats - estatísticas
-    parser_fp_config_stats = subparsers_fp.add_parser('envio-config-stats', help='Exibe estatísticas das configurações de envio')
 
 def handle_folha_de_ponto(args, parser_fp):
     
-    from src.utils.logger_config import logger
     import pickle
     import sys
     
@@ -221,6 +144,7 @@ def handle_folha_de_ponto(args, parser_fp):
                     )
                     if resultado and resultado.get('status') in ['sucesso', 'parcial']:
                         logger.info(f"✅ Folha criada para {resultado.get('funcionario', 'N/A')}")
+                        logger.audit("FOLHA_PONTO_CRIADA", target=f"folha:{funcionario_id}", changes={"empresa": empresa_id, "data": str(data)})
                     else:
                         logger.error("❌ Erro ao criar folha")
                 except Exception as e:
@@ -255,7 +179,6 @@ def handle_folha_de_ponto(args, parser_fp):
             try:
                 resultado = fp.análise_folha_de_ponto(args.arquivo)
                 if resultado:
-                    from src.utils.logger_config import logger
                     import json
                     logger.info(
                         f"Resultado da análise:\n{json.dumps(resultado, ensure_ascii=False, indent=2, default=str)}"
@@ -530,291 +453,6 @@ def handle_folha_de_ponto(args, parser_fp):
             
             logger.info("\n✓ Processamento concluído!")
         
-    # ==================== GERENCIAR FOLHAS GERADAS (CLI) ====================
-    
-    elif args.subcommand == "visualizar":
-        """Visualiza uma folha de ponto já gerada (por id ou nome)"""
-        from src.services.folha_ponto_service import FolhaDePontoService
-
-        servico = FolhaDePontoService()
-        if not servico.disponivel:
-            logger.error("❌ MongoDB não disponível para visualizar folha")
-            return
-
-        folha = None
-        if getattr(args, 'id', None):
-            folha = servico.buscar_por_id(args.id)
-            if not folha:
-                logger.error(f"❌ Folha não encontrada com ID {args.id}")
-                return
-        elif getattr(args, 'nome', None):
-            folhas = servico.buscar_por_nome_funcionario(
-                nome=args.nome,
-                mes_referencia=getattr(args, 'mes', None),
-            )
-            if not folhas:
-                logger.error(f"❌ Nenhuma folha encontrada para nome '{args.nome}'")
-                return
-            if len(folhas) == 1:
-                folha = servico.buscar_por_id(str(folhas[0]['_id']))
-            else:
-                logger.info(f"📋 {len(folhas)} folha(s) encontrada(s) para '{args.nome}':")
-                for f in folhas:
-                    fd = f.get('folha_data', {}) or {}
-                    logger.info(
-                        f"  • ID: {f.get('_id')} | {fd.get('nome_funcionario', 'N/A')} | "
-                        f"{f.get('mes_referencia', '')} | {f.get('status', '')}"
-                    )
-                return
-        else:
-            logger.error("❌ Informe --id ou --nome para visualizar")
-            return
-
-        if not folha:
-            logger.error("❌ Não foi possível recuperar a folha")
-            return
-
-        fd = folha.get('folha_data', {}) or {}
-        logger.info("=" * 60)
-        logger.info("📋 FOLHA DE PONTO")
-        logger.info("=" * 60)
-        logger.info(f"ID: {folha.get('_id')}")
-        logger.info(f"Funcionário: {fd.get('nome_funcionario', 'N/A')}")
-        logger.info(f"Mês: {folha.get('mes_referencia', '')}")
-        logger.info(
-            f"Período: {formatar_data_br(fd.get('data_inicio'))} a "
-            f"{formatar_data_br(fd.get('data_fim'))}"
-        )
-        logger.info(f"Total horas mês: {fd.get('total_horas_mes', 'N/A')}")
-        logger.info(f"Faltas: {fd.get('total_faltas', 0)}")
-        logger.info(f"Feriados: {fd.get('total_feriados', 0)}")
-        logger.info(f"Finais de semana: {fd.get('total_finais_semana', 0)}")
-        logger.info(f"Status: {folha.get('status', 'N/A')}")
-        logger.info(f"Versão: {folha.get('versao', 1)}")
-        logger.info(f"Excluída: {'SIM' if folha.get('excluida') else 'não'}")
-        logger.info(f"PDF: {folha.get('caminho_arquivo_gerado') or 'N/A'}")
-
-        dias = fd.get('dias', []) or []
-        logger.info("-" * 60)
-        logger.info(f"Dias ({len(dias)}):")
-        for dia in dias:
-            if isinstance(dia, dict):
-                num = dia.get('numero_dia')
-                entrada = dia.get('hora_entrada') or '-'
-                saida = dia.get('hora_saida') or '-'
-                tipo = dia.get('tipo_dia') or ''
-                obs = dia.get('observacoes') or ''
-            else:
-                num = getattr(dia, 'numero_dia', None)
-                entrada = getattr(dia, 'hora_entrada', None) or '-'
-                saida = getattr(dia, 'hora_saida', None) or '-'
-                tipo = getattr(dia, 'tipo_dia', '') or ''
-                obs = getattr(dia, 'observacoes', '') or ''
-            if hasattr(tipo, 'value'):
-                tipo = tipo.value
-            logger.info(f"  Dia {num}: {entrada} -> {saida} [{tipo}] {obs}")
-
-    elif args.subcommand == "buscar":
-        """Busca folhas de ponto por NOME do funcionário (+ período/status)"""
-        from src.services.folha_ponto_service import FolhaDePontoService
-
-        servico = FolhaDePontoService()
-        if not servico.disponivel:
-            logger.error("❌ MongoDB não disponível para buscar folhas")
-            return
-
-        nome = getattr(args, 'nome', None)
-        if not nome:
-            nome = input("Nome (ou parte) do funcionário: ").strip()
-        if not nome:
-            logger.error("❌ Nome é obrigatório")
-            return
-
-        folhas = servico.buscar_por_nome_funcionario(
-            nome=nome,
-            mes_referencia=getattr(args, 'mes', None),
-            status=getattr(args, 'status', None),
-            incluir_excluidas=getattr(args, 'incluir_excluidas', False),
-        )
-
-        if not folhas:
-            logger.info(f"ℹ Nenhuma folha encontrada para '{nome}'")
-            return
-
-        logger.info(f"\n🔍 {len(folhas)} folha(s) encontrada(s) para '{nome}':")
-        logger.info("=" * 100)
-        logger.info(f"{'ID':<28} {'Funcionário':<30} {'Mês':<10} {'Status':<20} {'Excluída'}")
-        logger.info("-" * 100)
-        for f in folhas:
-            fd = f.get('folha_data', {}) or {}
-            excluida = "SIM" if f.get('excluida') else "não"
-            logger.info(
-                f"{str(f.get('_id', '')):<28} {str(fd.get('nome_funcionario', 'N/A')):<30} "
-                f"{str(f.get('mes_referencia', '')):<10} {str(f.get('status', '')):<20} {excluida}"
-            )
-
-    elif args.subcommand == "excluir":
-        """Exclui folha (SOFT DELETE): marca como excluída, nunca remove do banco"""
-        from src.services.folha_ponto_service import FolhaDePontoService
-
-        servico = FolhaDePontoService()
-        if not servico.disponivel:
-            logger.error("❌ MongoDB não disponível para excluir folha")
-            return
-
-        folha = servico.buscar_por_id(args.id)
-        if not folha:
-            logger.error(f"❌ Folha não encontrada com ID {args.id}")
-            return
-
-        if folha.get('excluida'):
-            logger.warning(f"⚠ Folha {args.id} já está marcada como excluída")
-            return
-
-        nome_func = (folha.get('folha_data', {}) or {}).get('nome_funcionario', 'N/A')
-        mes_ref = folha.get('mes_referencia', '')
-
-        # Verificar se já foi enviada
-        ja_enviada = False
-        try:
-            ja_enviada = servico.verificar_folha_enviada(args.id)
-        except Exception as e:
-            logger.debug(f"Erro ao verificar envio: {e}")
-
-        if ja_enviada and not getattr(args, 'force', False):
-            logger.warning(
-                f"⚠ Esta folha de {nome_func} ({mes_ref}) já possui ENVIO registrado.\n"
-                "   O soft delete PRESERVA o registro e o histórico de envio.\n"
-                "   Use --force para prosseguir sem confirmação."
-            )
-            confirma = input("Confirma? (SIM para prosseguir): ").strip().upper()
-            if confirma != "SIM":
-                logger.info("Operação cancelada.")
-                return
-        elif not getattr(args, 'force', False):
-            confirma = input(
-                f"Marcar a folha de {nome_func} ({mes_ref}) como EXCLUÍDA? (SIM): "
-            ).strip().upper()
-            if confirma != "SIM":
-                logger.info("Operação cancelada.")
-                return
-
-        resultado = servico.marcar_excluida(args.id, motivo=getattr(args, 'motivo', None))
-        if resultado:
-            logger.info(f"✅ Folha de {nome_func} ({mes_ref}) marcada como EXCLUÍDA (soft delete).")
-            logger.info("   Registro mantido no banco com histórico e envios preservados.")
-        else:
-            logger.error("❌ Falha ao marcar a folha como excluída")
-
-    elif args.subcommand == "editar":
-        """Edita folha já gerada (recalcula totais, regenera PDF, nova versão + histórico)"""
-        from src.services.folha_ponto_service import FolhaDePontoService
-
-        servico = FolhaDePontoService()
-        if not servico.disponivel:
-            logger.error("❌ MongoDB não disponível para editar folha")
-            return
-
-        folha = servico.buscar_por_id(args.id)
-        if not folha:
-            logger.error(f"❌ Folha não encontrada com ID {args.id}")
-            return
-
-        if folha.get('excluida'):
-            logger.error("❌ Folha está EXCLUÍDA (soft delete). Edição bloqueada.")
-            return
-
-        # Verificar se já foi enviada (aviso, rastreabilidade via versão/histórico)
-        try:
-            if servico.verificar_folha_enviada(args.id):
-                logger.warning("⚠ Esta folha já possui ENVIO registrado. A edição será rastreada "
-                               "(nova versão + histórico). Considere re-enviar a folha corrigida.")
-        except Exception as e:
-            logger.debug(f"Erro ao verificar envio: {e}")
-
-        dias_editados = []
-
-        if getattr(args, 'dia', None) is not None:
-            edicao = {"numero_dia": args.dia}
-            if getattr(args, 'hora_entrada', None):
-                edicao["hora_entrada"] = args.hora_entrada
-            if getattr(args, 'hora_saida', None):
-                edicao["hora_saida"] = args.hora_saida
-            if getattr(args, 'intervalo_inicio', None):
-                edicao["hora_intervalo_inicio"] = args.intervalo_inicio
-            if getattr(args, 'intervalo_fim', None):
-                edicao["hora_intervalo_fim"] = args.intervalo_fim
-            if getattr(args, 'tipo_dia', None):
-                edicao["tipo_dia"] = args.tipo_dia
-            if getattr(args, 'observacoes', None):
-                edicao["observacoes"] = args.observacoes
-            dias_editados.append(edicao)
-        else:
-            # Modo interativo: editar dia a dia até 'sair'
-            logger.info("Edição interativa — informe os dias a corrigir (ou 'sair' para concluir).")
-            while True:
-                dia_input = input("Número do dia (1-31) ou 'sair': ").strip()
-                if not dia_input:
-                    continue
-                if dia_input.lower() == 'sair':
-                    break
-                try:
-                    numero = int(dia_input)
-                except ValueError:
-                    logger.warning("Dia inválido.")
-                    continue
-
-                edicao = {"numero_dia": numero}
-                entrada = input(f"  Hora entrada dia {numero} (ENTER mantém): ").strip()
-                if entrada:
-                    edicao["hora_entrada"] = entrada
-                saida = input(f"  Hora saída dia {numero} (ENTER mantém): ").strip()
-                if saida:
-                    edicao["hora_saida"] = saida
-                obs = input(f"  Observações dia {numero} (ENTER mantém): ").strip()
-                if obs:
-                    edicao["observacoes"] = obs
-                tipo = input(f"  Tipo dia {numero} (NORMAL/FALTA/FERIADO... ENTER mantém): ").strip().upper()
-                if tipo:
-                    edicao["tipo_dia"] = tipo
-
-                if len(edicao) > 1:
-                    dias_editados.append(edicao)
-                    logger.info(f"  ✓ Dia {numero} registrado")
-                else:
-                    logger.info("  Nenhuma alteração para esse dia.")
-
-        if not dias_editados:
-            logger.error("❌ Nenhuma edição informada.")
-            return
-
-        confirma = input(f"Confirmar edição da folha {args.id}? (SIM): ").strip().upper()
-        if confirma != "SIM":
-            logger.info("Operação cancelada.")
-            return
-
-        fp = Folha_de_Ponto()
-        resultado = fp.editar_folha(
-            folha_id=args.id,
-            dias_editados=dias_editados,
-            atualizar_pdf=True,
-            diretorio_destino=getattr(args, 'diretorio_destino', None),
-        )
-
-        if resultado and resultado.get('status') == 'sucesso':
-            logger.info(f"✅ Folha editada com sucesso (versão {resultado.get('versao')})")
-            totais = resultado.get('totais', {}) or {}
-            logger.info(f"   Totais recalculados: {totais.get('total_horas_mes', '-')}h | "
-                        f"faltas: {totais.get('total_faltas', 0)} | "
-                        f"feriados: {totais.get('total_feriados', 0)}")
-            if resultado.get('caminho_pdf'):
-                logger.info(f"   📕 PDF regenerado: {resultado['caminho_pdf']}")
-            else:
-                logger.warning("   ⚠ PDF não foi regenerado (verifique logs).")
-        else:
-            motivo = (resultado or {}).get('motivo', '')
-            logger.error(f"❌ Falha ao editar a folha. {motivo}")
-
     # ==================== HANDLERS DE ENVIO ====================
     
     elif args.subcommand == "envio":
@@ -1089,22 +727,13 @@ def handle_folha_de_ponto(args, parser_fp):
         
         # Filtrar por IDs se especificado
         contatos_ids = args.ids.split(",") if hasattr(args, 'ids') and args.ids else None
-
-        # Fonte das configurações (default: MongoDB com fallback planilha)
-        usar_mongodb = True
-        if hasattr(args, 'fonte') and args.fonte == 'planilha':
-            usar_mongodb = False
-            print("Fonte: Planilha Excel (forçada)")
-        elif hasattr(args, 'fonte') and args.fonte == 'mongodb':
-            print("Fonte: MongoDB (forçada)")
-
+        
         relatorio = envio_folha_ponto_orquestrador.executar(
             mes=mes,
             ano=ano,
             tipos_envio=tipos,
             contatos_ids=contatos_ids,
-            dry_run=dry_run,
-            usar_mongodb=usar_mongodb
+            dry_run=dry_run
         )
         
         # Exibir resumo
@@ -1120,265 +749,7 @@ def handle_folha_de_ponto(args, parser_fp):
             print("\n--- Erros ---")
             for erro in relatorio.erros:
                 print(f"  • {erro}")
-
-    # ==================== CONFIGS DE ENVIO (MongoDB) ====================
-
-    elif args.subcommand == "envio-config-listar":
-        """Lista configurações de envio no MongoDB"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        if not config_envio_folha_ponto_service.disponivel:
-            print("✗ MongoDB de configurações não disponível")
-            return
-
-        configs = config_envio_folha_ponto_service.listar(
-            apenas_ativas=not getattr(args, 'todos', False),
-            limit=100000,
-        )
-
-        if getattr(args, 'json', False):
-            import json
-            print(json.dumps([
-                {"id": str(c["_id"]), "identificador": c.get("identificador"), "nome": c.get("nome"),
-                 "empresa": c.get("empresa"), "local": c.get("local_contrato_polo"),
-                 "email": c.get("enviar_email"), "whatsapp": c.get("enviar_whatsapp"),
-                 "grupo": c.get("enviar_grupo_whatsapp")}
-                for c in configs
-            ], ensure_ascii=False, indent=2))
-            return
-
-        print(f"\n--- Configurações de Envio ({len(configs)}) ---")
-        print(f"{'ID':<6} {'Nome':<30} {'Local':<22} {'E':<3} {'WA':<3} {'GR':<3} {'Ativa':<6}")
-        print("-" * 80)
-        for c in configs:
-            print(f"{str(c['_id'])[-6:]:<6} {c.get('nome','')[:29]:<30} "
-                  f"{c.get('local_contrato_polo','')[:21]:<22} "
-                  f"{c.get('enviar_email',''):<3} {c.get('enviar_whatsapp',''):<3} "
-                  f"{c.get('enviar_grupo_whatsapp',''):<3} {'✓' if c.get('ativo') else ''}")
-
-    elif args.subcommand == "envio-config-buscar":
-        """Busca configuração de envio"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        if not config_envio_folha_ponto_service.disponivel:
-            print("✗ MongoDB de configurações não disponível")
-            return
-
-        resultados = []
-        if getattr(args, 'id', None):
-            doc = config_envio_folha_ponto_service.buscar_por_id(args.id, incluir_excluidas=True)
-            if doc:
-                resultados.append(doc)
-        elif getattr(args, 'nome', None):
-            resultados = config_envio_folha_ponto_service.buscar_por_nome(args.nome)
-        elif getattr(args, 'empresa', None):
-            resultados = config_envio_folha_ponto_service.buscar_por_empresa(args.empresa)
-        elif getattr(args, 'local', None):
-            resultados = config_envio_folha_ponto_service.buscar_por_local(args.local)
-        else:
-            print("Informe --id, --nome, --empresa ou --local")
-            return
-
-        if not resultados:
-            print("Nenhuma configuração encontrada")
-            return
-
-        for doc in resultados:
-            print(f"\nID: {doc.get('_id')}")
-            print(f"Identificador: {doc.get('identificador')}")
-            print(f"Nome: {doc.get('nome')}")
-            print(f"Emails: {', '.join(doc.get('emails', [])) or '-'}")
-            print(f"Telefones: {', '.join(doc.get('telefones', [])) or '-'}")
-            print(f"Grupos WhatsApp: {', '.join(doc.get('grupos_whatsapp', [])) or '-'}")
-            print(f"Enviar Email: {doc.get('enviar_email')} | WhatsApp: {doc.get('enviar_whatsapp')} | Grupo: {doc.get('enviar_grupo_whatsapp')} | Impresso: {doc.get('enviar_impresso')}")
-            print(f"Empresa: {doc.get('empresa')}")
-            print(f"Local/Contrato/Polo: {doc.get('local_contrato_polo')}")
-            print(f"Diretório Geral: {doc.get('diretorio_geral')}")
-            print(f"Diretório Específico: {doc.get('diretorio_especifico')}")
-            print(f"Ativa: {'✓' if doc.get('ativo') else '✗'} | Excluída: {'✓' if doc.get('excluida') else '✗'}")
-            print(f"Origem: {doc.get('origem')}")
-
-    elif args.subcommand == "envio-config-criar":
-        """Cria configuração de envio no MongoDB (interativo)"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        if not config_envio_folha_ponto_service.disponivel:
-            print("✗ MongoDB de configurações não disponível")
-            return
-
-        identificador = input("Identificador (ID da linha/contato): ").strip()
-        nome = input("Nome completo: ").strip()
-        email = input("Emails (separados por ,): ").strip()
-        telefone = input("Telefones (separados por ,): ").strip()
-        grupos = input("Grupos WhatsApp (separados por ,): ").strip()
-
-        def _flag(mensagem: str, padrao: str = "N") -> str:
-            v = input(f"{mensagem} (S/N) [{padrao}]: ").strip().upper()
-            return v if v in ("S", "N") else padrao
-
-        dados = {
-            "identificador": identificador,
-            "nome": nome,
-            "emails": [e.strip() for e in email.split(",") if e.strip()] if email else [],
-            "telefones": [t.strip() for t in telefone.split(",") if t.strip()] if telefone else [],
-            "grupos_whatsapp": [g.strip() for g in grupos.split(",") if g.strip()] if grupos else [],
-            "enviar_email": _flag("Enviar por email"),
-            "enviar_whatsapp": _flag("Enviar por WhatsApp individual"),
-            "enviar_grupo_whatsapp": _flag("Enviar para grupo WhatsApp"),
-            "enviar_impresso": _flag("Enviar impresso"),
-            "empresa": input("Empresa: ").strip(),
-            "local_contrato_polo": input("Local/Contrato/Polo: ").strip(),
-            "diretorio_geral": input("Diretório geral: ").strip(),
-            "diretorio_especifico": input("Diretório específico: ").strip(),
-        }
-
-        novo_id = config_envio_folha_ponto_service.criar(dados)
-        if novo_id:
-            print(f"✓ Configuração criada: {novo_id}")
-        else:
-            print("✗ Erro ao criar configuração")
-
-    elif args.subcommand == "envio-config-editar":
-        """Edita configuração de envio (interativo)"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        if not config_envio_folha_ponto_service.disponivel:
-            print("✗ MongoDB de configurações não disponível")
-            return
-
-        doc = config_envio_folha_ponto_service.buscar_por_id(args.id, incluir_excluidas=True)
-        if not doc:
-            print(f"✗ Configuração {args.id} não encontrada")
-            return
-
-        print(f"\nEditando: {doc.get('nome')} ({doc.get('identificador')})")
-
-        def _campos_lista(campo: str) -> List[str]:
-            atual = doc.get(campo, [])
-            novo = input(f"{campo} [{', '.join(atual)}] (enter para manter): ").strip()
-            if not novo:
-                return atual
-            return [x.strip() for x in novo.split(",") if x.strip()]
-
-        def _flag(campo: str) -> str:
-            atual = doc.get(campo, "N")
-            novo = input(f"{campo} [{atual}] (S/N, enter para manter): ").strip().upper()
-            return novo if novo in ("S", "N") else atual
-
-        alteracoes = {}
-
-        emails = _campos_lista("emails")
-        telefones = _campos_lista("telefones")
-        grupos = _campos_lista("grupos_whatsapp")
-        if emails != doc.get("emails"): alteracoes["emails"] = emails
-        if telefones != doc.get("telefones"): alteracoes["telefones"] = telefones
-        if grupos != doc.get("grupos_whatsapp"): alteracoes["grupos_whatsapp"] = grupos
-
-        for campo, _ in [("enviar_email", ""), ("enviar_whatsapp", ""), ("enviar_grupo_whatsapp", ""), ("enviar_impresso", "")]:
-            novo_flag = _flag(campo)
-            if novo_flag != doc.get(campo):
-                alteracoes[campo] = novo_flag
-
-        if not alteracoes:
-            print("Nenhuma alteração.")
-            return
-
-        if config_envio_folha_ponto_service.atualizar(args.id, alteracoes):
-            print("✓ Configuração atualizada")
-        else:
-            print("✗ Erro ao atualizar configuração")
-
-    elif args.subcommand == "envio-config-excluir":
-        """Exclui (soft delete) configuração de envio"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        doc = config_envio_folha_ponto_service.buscar_por_id(args.id, incluir_excluidas=True)
-        if not doc:
-            print(f"✗ Configuração {args.id} não encontrada")
-            return
-
-        confirma = input(f"Excluir (soft delete) '{doc.get('nome')}'? (SIM): ").strip().upper()
-        if confirma != "SIM":
-            print("Cancelado.")
-            return
-
-        if config_envio_folha_ponto_service.excluir(args.id):
-            print("✓ Configuração excluída (soft delete)")
-        else:
-            print("✗ Erro ao excluir configuração")
-
-    elif args.subcommand == "envio-config-reativar":
-        """Reativa configuração de envio excluída"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        if config_envio_folha_ponto_service.reativar(args.id):
-            print("✓ Configuração reativada")
-        else:
-            print("✗ Erro ao reativar configuração")
-
-    elif args.subcommand == "envio-config-importar":
-        """Importa configs da planilha Excel para o MongoDB"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        if not config_envio_folha_ponto_service.disponivel:
-            print("✗ MongoDB de configurações não disponível")
-            return
-
-        sobrescrever = getattr(args, 'sobrescrever', False)
-        marcar_removidos = getattr(args, 'marcar_removidos', False)
-
-        print("Importando configurações da planilha Excel...")
-        resumo = config_envio_folha_ponto_service.importar_da_planilha(
-            sobrescrever=sobrescrever,
-            marcar_removidos=marcar_removidos,
-        )
-
-        print(f"\n--- Resumo da Importação ---")
-        print(f"Total na planilha: {resumo.get('total_planilha', 0)}")
-        print(f"Criados: {resumo.get('criados', 0)}")
-        print(f"Atualizados: {resumo.get('atualizados', 0)}")
-        print(f"Pulados (já existem): {resumo.get('pulados', 0)}")
-        print(f"Erros: {resumo.get('erros', 0)}")
-        if 'removidos' in resumo:
-            print(f"Removidos (soft delete): {resumo.get('removidos', 0)}")
-
-    elif args.subcommand == "envio-config-validar":
-        """Valida configurações de envio no MongoDB"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        if not config_envio_folha_ponto_service.disponivel:
-            print("✗ MongoDB de configurações não disponível")
-            return
-
-        resultado = config_envio_folha_ponto_service.validar()
-
-        print(f"\nTotal de configs: {resultado.get('total_configs', 0)}")
-        if resultado.get("valida"):
-            print("✓ Configurações válidas")
-        else:
-            print("✗ Problemas encontrados:")
-            for p in resultado.get("problemas", []):
-                print(f"  • {p}")
-            if resultado.get("avisos"):
-                print("\nAvisos:")
-                for a in resultado.get("avisos", []):
-                    print(f"  ~ {a}")
-
-    elif args.subcommand == "envio-config-stats":
-        """Exibe estatísticas das configurações de envio"""
-        from src.services.config_envio_folha_ponto_service import config_envio_folha_ponto_service
-
-        if not config_envio_folha_ponto_service.disponivel:
-            print("✗ MongoDB de configurações não disponível")
-            return
-
-        stats = config_envio_folha_ponto_service.contar()
-        print(f"\n--- Estatísticas de Configurações de Envio ---")
-        print(f"Total (não excluídas): {stats.get('total', 0)}")
-        print(f"Ativas: {stats.get('ativas', 0)}")
-        print(f"Inativas: {stats.get('inativas', 0)}")
-        print(f"Excluídas (soft delete): {stats.get('excluidas', 0)}")
-
+        
     else:
         # Exibe a ajuda quando nenhum subcomando é fornecido
         parser_fp.print_help()
