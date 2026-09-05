@@ -8,7 +8,6 @@ Responsabilidades:
 - Auto-cadastro de funções durante importação de funcionários
 """
 
-import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 import dotenv
@@ -65,8 +64,6 @@ class FuncaoService(HistoricoMixin):
         # Usar valores do .env se não fornecidos
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
-        
-        self.logger = get_logger("funcao")
         
         # Cache em memória para funções (chave: ObjectId string, valor: documento)
         self._cache_funcoes: Dict[str, Dict[str, Any]] = {}
@@ -270,8 +267,17 @@ class FuncaoService(HistoricoMixin):
             else:
                 filtro = {"nome_normalizado": {"$regex": nome_normalizado, "$options": "i"}}
             
-            with self.logger.performance("buscar_por_nome"):
-                documento = self.colecao.find_one(filtro)
+            documento = self.colecao.find_one(filtro)
+            
+            if documento:
+                # Adicionar ao cache
+                funcao_id = str(documento.get("_id"))
+                self._cache_funcoes[funcao_id] = documento
+                logger.debug(f"✓ Função encontrada: {documento.get('nome')}")
+                return documento
+            else:
+                logger.debug(f"✗ Função não encontrada: {nome_funcao}")
+                return None
         
         except Exception as e:
             logger.error(f"Erro ao buscar função por nome: {e}")
@@ -305,8 +311,7 @@ class FuncaoService(HistoricoMixin):
                 logger.warning(f"ID inválido para conversão: {funcao_id}")
                 return None
             
-            with self.logger.performance("buscar_por_id"):
-                documento = self.colecao.find_one({"_id": obj_id})
+            documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
                 # Adicionar ao cache
@@ -332,8 +337,7 @@ class FuncaoService(HistoricoMixin):
             return []
         
         try:
-            with self.logger.performance("listar_todos"):
-                funcoes = list(self.colecao.find().sort("ordem", ASCENDING))
+            funcoes = list(self.colecao.find().sort("ordem", ASCENDING))
             logger.debug(f"✓ {len(funcoes)} funções encontradas")
             return funcoes
         except Exception as e:
@@ -351,8 +355,7 @@ class FuncaoService(HistoricoMixin):
             return []
         
         try:
-            with self.logger.performance("listar_ativos"):
-                funcoes = list(self.colecao.find({"status": StatusFuncao.ATIVO.value}).sort("ordem", ASCENDING))
+            funcoes = list(self.colecao.find({"status": StatusFuncao.ATIVO.value}).sort("ordem", ASCENDING))
             logger.debug(f"✓ {len(funcoes)} funções ativas encontradas")
             return funcoes
         except Exception as e:
@@ -373,11 +376,10 @@ class FuncaoService(HistoricoMixin):
             return []
         
         try:
-            with self.logger.performance("listar_por_categoria"):
-                funcoes = list(self.colecao.find({
-                    "funcao_geral": funcao_geral,
-                    "status": StatusFuncao.ATIVO.value
-                }).sort("ordem", ASCENDING))
+            funcoes = list(self.colecao.find({
+                "funcao_geral": funcao_geral,
+                "status": StatusFuncao.ATIVO.value
+            }).sort("ordem", ASCENDING))
             logger.debug(f"✓ {len(funcoes)} funções encontradas na categoria {funcao_geral}")
             return funcoes
         except Exception as e:
@@ -636,8 +638,7 @@ class FuncaoService(HistoricoMixin):
             
             # Buscar na coleção de funcionários
             funcionarios_colecao = self.db["funcionarios"]
-            with self.logger.performance("verificar_referencias_funcionarios"):
-                count = funcionarios_colecao.count_documents({"funcao_id": obj_id})
+            count = funcionarios_colecao.count_documents({"funcao_id": obj_id})
             
             return count > 0
         
