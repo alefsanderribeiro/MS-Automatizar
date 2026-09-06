@@ -798,7 +798,8 @@ class ZohoMailService:
                         f"✓ E-mail enviado para {', '.join(destinatarios)} "
                         f"com {len(attachments_list)} anexo(s)"
                     )
-                
+
+                    self.logger.info("Envio de e-mail concluído", correlation_id=corr_id)
                     return {
                         "sucesso": True,
                         "mensagem": "E-mail enviado com sucesso",
@@ -816,7 +817,7 @@ class ZohoMailService:
                         "mensagem": erro_msg,
                         "detalhes": response.json() if response.text else None
                     }
-        
+
             except Exception as e:
                 erro_msg = f"Erro ao enviar e-mail: {e}"
                 logger.error(erro_msg)
@@ -825,10 +826,8 @@ class ZohoMailService:
                     "mensagem": erro_msg,
                     "detalhes": None
                 }
-    
-        # ==================== VERIFICAÇÕES ====================
 
-            self.logger.info("Envio de e-mail concluído", correlation_id=corr_id)
+        # ==================== VERIFICAÇÕES ====================
     
     def verificar_conexao(self) -> Dict[str, Any]:
         """

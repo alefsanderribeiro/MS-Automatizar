@@ -412,6 +412,7 @@ class WhatsAppService:
                     # API v8+ usa "results", API antiga usa "data"
                     results = dados.get("results") or dados.get("data", {})
                 
+                    self.logger.info("Envio de arquivo WhatsApp concluído", correlation_id=corr_id)
                     return {
                         "sucesso": True,
                         "mensagem": "Arquivo enviado com sucesso",
@@ -429,7 +430,7 @@ class WhatsAppService:
                         "mensagem": erro_msg,
                         "detalhes": response.json() if response.text else None
                     }
-        
+
             except Exception as e:
                 erro_msg = f"Erro ao enviar arquivo: {e}"
                 logger.error(erro_msg)
@@ -438,8 +439,6 @@ class WhatsAppService:
                     "mensagem": erro_msg,
                     "detalhes": None
                 }
-
-            self.logger.info("Envio de arquivo WhatsApp concluído", correlation_id=corr_id)
     
     @retry_com_log()
     def enviar_texto(self,
@@ -522,7 +521,8 @@ class WhatsAppService:
                     dados = response.json()
                 
                     logger.info(f"✓ Texto enviado para {to}")
-                
+
+                    self.logger.info("Envio de texto WhatsApp concluído", correlation_id=corr_id)
                     return {
                         "sucesso": True,
                         "mensagem": "Texto enviado com sucesso",
@@ -539,7 +539,7 @@ class WhatsAppService:
                         "mensagem": erro_msg,
                         "detalhes": None
                     }
-        
+
             except Exception as e:
                 erro_msg = f"Erro ao enviar texto: {e}"
                 logger.error(erro_msg)
@@ -548,8 +548,6 @@ class WhatsAppService:
                     "mensagem": erro_msg,
                     "detalhes": None
                 }
-
-            self.logger.info("Envio de texto WhatsApp concluído", correlation_id=corr_id)
     
     def enviar_multiplos_arquivos(self,
                                    destinatario: str,
@@ -646,12 +644,14 @@ class WhatsAppService:
             msg_ok = resultados["mensagem_enviada"]
         
             if enviados == total and (not mensagem or msg_ok):
+                self.logger.info("Envio múltiplos WhatsApp concluído", correlation_id=corr_id)
                 return {
                     "sucesso": True,
                     "mensagem": f"Mensagem + {total} arquivo(s) enviados com sucesso" if mensagem else f"{total} arquivo(s) enviados",
                     "detalhes": resultados
                 }
             elif enviados > 0 or msg_ok:
+                self.logger.info("Envio múltiplos WhatsApp concluído (parcial)", correlation_id=corr_id)
                 return {
                     "sucesso": True,
                     "parcial": True,
@@ -666,8 +666,6 @@ class WhatsAppService:
                 }
 
         # ==================== DISPOSITIVOS (MULTIDEVICE) ====================
-
-            self.logger.info("Envio múltiplos WhatsApp concluído", correlation_id=corr_id)
 
     def obter_id_dispositivo_por_jid(self, jid: str) -> Optional[str]:
         """
