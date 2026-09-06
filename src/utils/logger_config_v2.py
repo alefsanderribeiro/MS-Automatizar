@@ -721,6 +721,7 @@ class CorrelationContext:
         self.correlation_id = None
     
     def __enter__(self):
+        self.previous_id = CorrelationManager.get_current()
         self.correlation_id = CorrelationManager.generate_id()
         CorrelationManager.set_current(self.correlation_id)
         
@@ -744,7 +745,7 @@ class CorrelationContext:
                 correlation_id=self.correlation_id
             )
         
-        CorrelationManager.clear()
+        CorrelationManager.set_current(self.previous_id)
         return False
 
 

@@ -283,7 +283,8 @@ class HoleriteService:
         
         try:
             object_id = ObjectId(holerite_id)
-            return self.colecao.find_one({"_id": object_id})
+            with self.logger.performance("buscar_por_id"):
+                return self.colecao.find_one({"_id": object_id})
         except Exception as e:
             logger.error(f"Erro ao buscar holerite por ID: {e}")
             return None
@@ -302,7 +303,8 @@ class HoleriteService:
             return None
         
         try:
-            return self.colecao.find_one({"arquivo.hash_sha256": hash_sha256})
+            with self.logger.performance("buscar_por_hash"):
+                return self.colecao.find_one({"arquivo.hash_sha256": hash_sha256})
         except Exception as e:
             logger.error(f"Erro ao buscar holerite por hash: {e}")
             return None
@@ -333,9 +335,10 @@ class HoleriteService:
             if competencia:
                 filtro["competencia"] = competencia
             
-            cursor = self.colecao.find(filtro).sort(
-                "competencia", DESCENDING
-            ).limit(limite)
+            with self.logger.performance("buscar_por_funcionario"):
+                cursor = self.colecao.find(filtro).sort(
+                    "competencia", DESCENDING
+                ).limit(limite)
             
             return list(cursor)
         except Exception as e:
@@ -371,9 +374,10 @@ class HoleriteService:
             if competencia:
                 filtro["competencia"] = competencia
             
-            cursor = self.colecao.find(filtro).sort(
-                "competencia", DESCENDING
-            ).limit(limite)
+            with self.logger.performance("buscar_por_documento"):
+                cursor = self.colecao.find(filtro).sort(
+                    "competencia", DESCENDING
+                ).limit(limite)
             
             return list(cursor)
         except Exception as e:
@@ -417,10 +421,11 @@ class HoleriteService:
             if "empresa_id" in filtros and filtros["empresa_id"]:
                 filtro["empresa_id"] = ObjectId(filtros["empresa_id"])
             
-            cursor = self.colecao.find(filtro) \
-                .sort("criado_em", DESCENDING) \
-                .skip(skip) \
-                .limit(limite)
+            with self.logger.performance("listar_todos"):
+                cursor = self.colecao.find(filtro) \
+                    .sort("criado_em", DESCENDING) \
+                    .skip(skip) \
+                    .limit(limite)
             
             return list(cursor)
         except Exception as e:
@@ -449,7 +454,8 @@ class HoleriteService:
             if "status" in filtros and filtros["status"]:
                 filtro["status"] = filtros["status"]
             
-            return self.colecao.count_documents(filtro)
+            with self.logger.performance("contar_total"):
+                return self.colecao.count_documents(filtro)
         except Exception as e:
             logger.error(f"Erro ao contar holerites: {e}")
             return 0
@@ -483,7 +489,8 @@ class HoleriteService:
             if status:
                 filtro["status"] = status
             
-            cursor = self.colecao.find(filtro).sort("funcionario_nome", ASCENDING)
+            with self.logger.performance("buscar_por_competencia"):
+                cursor = self.colecao.find(filtro).sort("funcionario_nome", ASCENDING)
             
             return list(cursor)
         except Exception as e:
@@ -590,9 +597,10 @@ class HoleriteService:
             return []
         
         try:
-            cursor = self.colecao_envios.find({
-                "holerite_id": ObjectId(holerite_id)
-            }).sort("enviado_em", DESCENDING)
+            with self.logger.performance("listar_envios_holerite"):
+                cursor = self.colecao_envios.find({
+                    "holerite_id": ObjectId(holerite_id)
+                }).sort("enviado_em", DESCENDING)
             
             return list(cursor)
         except Exception as e:
@@ -633,9 +641,10 @@ class HoleriteService:
             if competencia:
                 filtro["competencia"] = competencia
             
-            cursor = self.colecao.find(filtro).sort(
-                [("competencia", DESCENDING), ("funcionario_nome", ASCENDING)]
-            ).limit(limite)
+            with self.logger.performance("listar_pendentes_envio"):
+                cursor = self.colecao.find(filtro).sort(
+                    [("competencia", DESCENDING), ("funcionario_nome", ASCENDING)]
+                ).limit(limite)
             
             return list(cursor)
         except Exception as e:
@@ -665,7 +674,8 @@ class HoleriteService:
                 {"$group": {"_id": "$status", "count": {"$sum": 1}}}
             ]
             
-            resultado = self.colecao.aggregate(pipeline)
+            with self.logger.performance("contar_por_status"):
+                resultado = self.colecao.aggregate(pipeline)
             
             return {doc["_id"]: doc["count"] for doc in resultado}
         except Exception as e:
@@ -701,7 +711,8 @@ class HoleriteService:
             if tipo_folha:
                 filtro["tipo_folha"] = tipo_folha
             
-            return self.colecao.count_documents(filtro) > 0
+            with self.logger.performance("existe_holerite"):
+                return self.colecao.count_documents(filtro) > 0
         except Exception as e:
             logger.error(f"Erro ao verificar existência: {e}")
             return False

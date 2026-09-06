@@ -64,3 +64,4 @@ coverage_html/
 *.swp
 .DS_Store
 Thumbs.db
+.bootstrap/

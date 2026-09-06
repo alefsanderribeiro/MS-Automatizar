@@ -8,7 +8,6 @@ Responsabilidades:
 - Auto-cadastro de horários durante importação de funcionários
 """
 
-import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone
 import dotenv
@@ -64,6 +63,8 @@ class HorarioService(HistoricoMixin):
         # Usar valores do .env se não fornecidos
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
+        
+        self.logger = get_logger("horario")
         
         # Cache em memória para horários (chave: ObjectId string, valor: documento)
         self._cache_horarios: Dict[str, Dict[str, Any]] = {}
@@ -265,7 +266,8 @@ class HorarioService(HistoricoMixin):
             else:
                 filtro = {"nome_normalizado": {"$regex": nome_normalizado, "$options": "i"}}
             
-            documento = self.colecao.find_one(filtro)
+            with self.logger.performance("buscar_por_nome"):
+                documento = self.colecao.find_one(filtro)
             
             if documento:
                 # Adicionar ao cache
@@ -309,7 +311,8 @@ class HorarioService(HistoricoMixin):
                 logger.warning(f"ID inválido para conversão: {horario_id}")
                 return None
             
-            documento = self.colecao.find_one({"_id": obj_id})
+            with self.logger.performance("buscar_por_id"):
+                documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
                 # Adicionar ao cache
@@ -335,7 +338,8 @@ class HorarioService(HistoricoMixin):
             return []
         
         try:
-            horarios = list(self.colecao.find().sort("ordem", ASCENDING))
+            with self.logger.performance("listar_todos"):
+                horarios = list(self.colecao.find().sort("ordem", ASCENDING))
             logger.debug(f"✓ {len(horarios)} horários encontrados")
             return horarios
         except Exception as e:
@@ -353,7 +357,8 @@ class HorarioService(HistoricoMixin):
             return []
         
         try:
-            horarios = list(self.colecao.find({"status": StatusHorario.ATIVO.value}).sort("ordem", ASCENDING))
+            with self.logger.performance("listar_ativos"):
+                horarios = list(self.colecao.find({"status": StatusHorario.ATIVO.value}).sort("ordem", ASCENDING))
             logger.debug(f"✓ {len(horarios)} horários ativos encontrados")
             return horarios
         except Exception as e:
@@ -612,7 +617,8 @@ class HorarioService(HistoricoMixin):
             
             # Buscar na coleção de funcionários
             funcionarios_colecao = self.db["funcionarios"]
-            count = funcionarios_colecao.count_documents({"horario_id": obj_id})
+            with self.logger.performance("verificar_referencias_funcionarios"):
+                count = funcionarios_colecao.count_documents({"horario_id": obj_id})
             
             return count > 0
         
