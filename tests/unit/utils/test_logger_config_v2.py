@@ -722,3 +722,29 @@ class TestGetLoggerConvenience:
         logger = get_logger("mymod")
         assert isinstance(logger, ModuleLogger)
         assert logger.module == "mymod"
+
+
+# ==================== Nested Correlation ====================
+
+
+class TestNestedCorrelation:
+    """Teste de correlation IDs aninhados."""
+
+    def test_nested_correlation_restores_parent(self):
+        """Correlation aninhada restaura o ID do pai ao sair."""
+        from src.utils.logger_config_v2 import CorrelationContext, CorrelationManager
+
+        CorrelationManager.clear()
+
+        with CorrelationContext(label="outer") as outer_id:
+            assert CorrelationManager.get_current() == outer_id
+
+            with CorrelationContext(label="inner") as inner_id:
+                assert CorrelationManager.get_current() == inner_id
+                assert inner_id != outer_id
+
+            # Ao sair do inner, deve voltar ao outer
+            assert CorrelationManager.get_current() == outer_id
+
+        # Ao sair do outer, deve limpar
+        assert CorrelationManager.get_current() is None

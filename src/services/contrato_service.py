@@ -64,6 +64,8 @@ class ContratoService(HistoricoMixin):
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
         
+        self.logger = get_logger("contrato")
+        
         # Cache em memória para contratos (chave: ObjectId string, valor: documento)
         self._cache_contratos: Dict[str, Dict[str, Any]] = {}
         
@@ -264,7 +266,8 @@ class ContratoService(HistoricoMixin):
             else:
                 filtro = {"nome_normalizado": {"$regex": nome_normalizado, "$options": "i"}}
             
-            documento = self.colecao.find_one(filtro)
+            with self.logger.performance("buscar_por_nome"):
+                documento = self.colecao.find_one(filtro)
             
             if documento:
                 # Adicionar ao cache
@@ -308,7 +311,8 @@ class ContratoService(HistoricoMixin):
                 logger.warning(f"ID inválido para conversão: {contrato_id}")
                 return None
             
-            documento = self.colecao.find_one({"_id": obj_id})
+            with self.logger.performance("buscar_por_id"):
+                documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
                 # Adicionar ao cache
@@ -334,7 +338,8 @@ class ContratoService(HistoricoMixin):
             return []
         
         try:
-            contratos = list(self.colecao.find().sort("ordem", ASCENDING))
+            with self.logger.performance("listar_todos"):
+                contratos = list(self.colecao.find().sort("ordem", ASCENDING))
             logger.debug(f"✓ {len(contratos)} contratos encontrados")
             return contratos
         except Exception as e:
@@ -352,7 +357,8 @@ class ContratoService(HistoricoMixin):
             return []
         
         try:
-            contratos = list(self.colecao.find({"status": StatusContrato.ATIVO.value}).sort("ordem", ASCENDING))
+            with self.logger.performance("listar_ativos"):
+                contratos = list(self.colecao.find({"status": StatusContrato.ATIVO.value}).sort("ordem", ASCENDING))
             logger.debug(f"✓ {len(contratos)} contratos ativos encontrados")
             return contratos
         except Exception as e:
@@ -611,7 +617,8 @@ class ContratoService(HistoricoMixin):
             
             # Buscar na coleção de funcionários
             funcionarios_colecao = self.db["funcionarios"]
-            count = funcionarios_colecao.count_documents({"contrato_empresa_id": obj_id})
+            with self.logger.performance("verificar_referencias_funcionarios"):
+                count = funcionarios_colecao.count_documents({"contrato_empresa_id": obj_id})
             
             return count > 0
         
