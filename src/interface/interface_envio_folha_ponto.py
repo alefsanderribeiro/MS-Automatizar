@@ -585,7 +585,7 @@ def menu_principal():
     menu = (
         MenuBuilder("SISTEMA DE ENVIO DE FOLHAS DE PONTO", ICONES["folha_ponto"])
         .adicionar("Verificar Servicos", menu_verificar_servicos)
-        .adicionar("Validar Planilha de Contatos", menu_validar_planilha)
+        .adicionar("Gerenciar Contatos de Envio", _abrir_contatos_envio)
         .adicionar("Sincronizar Grupos WhatsApp", menu_sincronizar_grupos)
         .adicionar("Gerenciar Dispositivos WhatsApp", menu_dispositivos)
         .adicionar("Gerenciar Templates", menu_templates)
