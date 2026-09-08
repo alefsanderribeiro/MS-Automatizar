@@ -18,6 +18,9 @@ from src.comandos.diretorios import (
     criar_diretorio_para_contrato, atualizar_diretorio_interativo,
     exibir_estatisticas_diretorios, criar_diretorios_todos_contratos
 )
+from src.comandos.contatos_folha_ponto import (
+    contatos_subcommands, handle_contatos
+)
 
 
 
@@ -211,8 +214,7 @@ def start_command():
 
         elif args.command == 'contatos':
 
-            from src.comandos.contatos_folha_ponto import cmd_contatos_folha_ponto
-            cmd_contatos_folha_ponto()
+            handle_contatos(args, parser)
             
 
 

@@ -5,7 +5,10 @@ from datetime import date, timedelta, datetime
 import calendar
 import locale
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from weasyprint import HTML
+try:
+    from weasyprint import HTML
+except ImportError:
+    HTML = None
 
 from typing import List, Dict, Union, Any, Optional
 import unicodedata
