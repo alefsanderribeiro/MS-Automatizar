@@ -162,6 +162,79 @@ def calcular_total_horas(entrada: Optional[str], saida: Optional[str],
         return None
 
 
+def _extrair_valor_dia(dia, campo: str):
+    """Extrai um campo de um dia que pode ser dict ou objeto Pydantic/BaseModel."""
+    if isinstance(dia, dict):
+        return dia.get(campo)
+    return getattr(dia, campo, None)
+
+
+def recalcular_totais_folha(dias) -> Dict[str, Any]:
+    """
+    Recalcula as totalizações de uma folha de ponto a partir da lista de dias.
+
+    É o MESMO cálculo usado na geração/armazenamento da IA (total_horas_mes,
+    total_faltas, total_feriados, total_finais_semana), extraído para ser
+    reutilizado na edição de folha sem duplicar a lógica.
+
+    Aceita dias como listas de dicts (formato MongoDB) ou de ``DiaFolhaPonto``.
+
+    Args:
+        dias: Lista de dias da folha
+
+    Returns:
+        Dict com: total_horas_mes (HH:MM), total_faltas, total_feriados,
+        total_finais_semana
+    """
+    total_horas_mes_minutos = 0
+    total_faltas = 0
+    total_feriados = 0
+    total_finais_semana = 0
+
+    for dia in dias or []:
+        tipo_dia = _extrair_valor_dia(dia, "tipo_dia")
+        # Normalizar para comparação (pode ser str do enum ou valor)
+        if hasattr(tipo_dia, "value"):
+            tipo_dia = tipo_dia.value
+        tipo_dia_str = str(tipo_dia or "").upper()
+
+        # Feriado
+        if tipo_dia_str == "FERIADO":
+            total_feriados += 1
+
+        # Finais de semana
+        dia_semana = _extrair_valor_dia(dia, "dia_semana")
+        if hasattr(dia_semana, "value"):
+            dia_semana = dia_semana.value
+        if tipo_dia_str in ("SÁBADO", "SABADO", "DOMINGO"):
+            total_finais_semana += 1
+        elif dia_semana and str(dia_semana).upper() in ["SÁBADO", "SABADO", "DOMINGO"]:
+            total_finais_semana += 1
+
+        # Faltas
+        if tipo_dia_str == "FALTA":
+            total_faltas += 1
+
+        # Horas trabalhadas
+        total_horas = _extrair_valor_dia(dia, "total_horas_trabalhadas")
+        if total_horas:
+            try:
+                partes = str(total_horas).split(':')
+                if len(partes) == 2:
+                    total_horas_mes_minutos += (int(partes[0]) * 60 + int(partes[1]))
+            except Exception:
+                pass
+
+    total_horas_mes = f"{total_horas_mes_minutos // 60:02d}:{total_horas_mes_minutos % 60:02d}"
+
+    return {
+        "total_horas_mes": total_horas_mes,
+        "total_faltas": total_faltas,
+        "total_feriados": total_feriados,
+        "total_finais_semana": total_finais_semana,
+    }
+
+
 # ==================== MODELO EXTRATOR (Structured Output) ====================
 
 class DiaExtraido(BaseModel):

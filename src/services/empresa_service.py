@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.services.mongodb_connection import MongoDBConnectionPool
+from src.services.mongodb_connection import MongoDBConnectionPool, retry_mongodb, medir_tempo
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.cache_service import cache_service
 from src.utils.logger_config_v2 import get_logger
@@ -227,8 +227,7 @@ class EmpresaService(HistoricoMixin):
                 # Busca com regex (parcial)
                 filtro = {"nome_normalizado": {"$regex": nome_normalizado, "$options": "i"}}
 
-            with self.logger.performance("buscar_por_nome"):
-                documento = self.colecao.find_one(filtro)
+            documento = self.colecao.find_one(filtro)
 
             if documento:
                 # Adicionar ao cache (usar _id como chave)
@@ -277,8 +276,8 @@ class EmpresaService(HistoricoMixin):
             nome_normalizado = normalizar_texto(nome_empresa)
             logger.debug(f"[EMPRESA] Nome normalizado: '{nome_empresa}' → '{nome_normalizado}'")
 
-            with self.logger.performance("buscar_por_nome_ou_simplificado_listar"):
-                todos_docs = list(self.colecao.find({}))
+            # Buscar TODOS os documentos (cache faz isso ser rápido)
+            todos_docs = list(self.colecao.find({}))
             logger.debug(f"[EMPRESA] Total de empresas em base: {len(todos_docs)}")
 
             # 1. PRIMEIRO: Tentar buscar por nome_simplificado
@@ -350,8 +349,7 @@ class EmpresaService(HistoricoMixin):
             # Busca com regex (parcial)
             filtro = {"nome_normalizado": {"$regex": nome_normalizado, "$options": "i"}}
             
-            with self.logger.performance("buscar_todas_por_nome"):
-                documentos = list(self.colecao.find(filtro).sort("nome", 1))
+            documentos = list(self.colecao.find(filtro).sort("nome", 1))
             
             # Adicionar ao cache
             for doc in documentos:
@@ -383,8 +381,7 @@ class EmpresaService(HistoricoMixin):
             # Remover caracteres especiais do CNPJ para busca
             cnpj_limpo = cnpj.replace(".", "").replace("-", "").replace("/", "")
             
-            with self.logger.performance("buscar_por_cnpj"):
-                documento = self.colecao.find_one({"cnpj": {"$regex": cnpj_limpo}})
+            documento = self.colecao.find_one({"cnpj": {"$regex": cnpj_limpo}})
             
             if documento:
                 # Adicionar ao cache
@@ -443,8 +440,7 @@ class EmpresaService(HistoricoMixin):
                 logger.warning(f"ID inválido para conversão: {empresa_id}")
                 return None
             
-            with self.logger.performance("buscar_por_id"):
-                documento = self.colecao.find_one({"_id": obj_id})
+            documento = self.colecao.find_one({"_id": obj_id})
             
             if documento:
                 # Atualizar AMBOS os caches para próximas buscas
@@ -650,17 +646,16 @@ class EmpresaService(HistoricoMixin):
             return {"dados": [], "total": 0, "skip": skip, "limit": limit, "paginas": 0, "pagina_atual": 0}
         
         try:
-            with self.logger.performance("listar_todos_contar"):
-                total = self.colecao.count_documents({})
+            # Contar total
+            total = self.colecao.count_documents({})
             
             # Buscar com paginação
-            with self.logger.performance("listar_todos_buscar"):
-                documentos = list(
-                    self.colecao.find({})
-                    .sort("nome", 1)
-                    .skip(skip)
-                    .limit(limit)
-                )
+            documentos = list(
+                self.colecao.find({})
+                .sort("nome", 1)
+                .skip(skip)
+                .limit(limit)
+            )
             
             # Calcular paginação
             paginas = (total + limit - 1) // limit if limit > 0 else 1
@@ -692,13 +687,12 @@ class EmpresaService(HistoricoMixin):
             return []
         
         try:
-            with self.logger.performance("listar_incompletas"):
-                documentos = list(
-                    self.colecao.find(
-                        {"incompleto": True},
-                        {"_id": 0}
-                    ).sort("criado_em", -1)
-                )
+            documentos = list(
+                self.colecao.find(
+                    {"incompleto": True},
+                    {"_id": 0}
+                ).sort("criado_em", -1)
+            )
             
             logger.info(f"✓ {len(documentos)} empresas incompletas encontradas")
             return documentos
@@ -718,11 +712,10 @@ class EmpresaService(HistoricoMixin):
             return {'status': 'MongoDB indisponível', 'total_empresas': 0}
         
         try:
-            with self.logger.performance("obter_estatisticas"):
-                total = self.colecao.count_documents({})
-                completas = self.colecao.count_documents({"incompleto": False})
-                incompletas = self.colecao.count_documents({"incompleto": True})
-                ativas = self.colecao.count_documents({"status": "ativa"})
+            total = self.colecao.count_documents({})
+            completas = self.colecao.count_documents({"incompleto": False})
+            incompletas = self.colecao.count_documents({"incompleto": True})
+            ativas = self.colecao.count_documents({"status": "ativa"})
             
             stats = {
                 'status': 'OK' if self.disponivel else 'Erro',
@@ -1025,11 +1018,10 @@ class EmpresaService(HistoricoMixin):
             return []
         
         try:
-            with self.logger.performance("listar_por_status"):
-                documentos = list(
-                    self.colecao.find({"status": status})
-                    .sort("nome", 1)
-                )
+            documentos = list(
+                self.colecao.find({"status": status})
+                .sort("nome", 1)
+            )
             
             logger.debug(f"✓ {len(documentos)} empresas com status '{status}'")
             return documentos
@@ -1051,11 +1043,10 @@ class EmpresaService(HistoricoMixin):
         
         try:
             # Query MongoDB com $in para aceitar ambas as formas de gênero
-            with self.logger.performance("listar_ativos"):
-                documentos = list(
-                    self.colecao.find({"status": {"$in": ["ativa", "ativo"]}})
-                    .sort("nome", 1)
-                )
+            documentos = list(
+                self.colecao.find({"status": {"$in": ["ativa", "ativo"]}})
+                .sort("nome", 1)
+            )
             
             logger.debug(f"✓ {len(documentos)} empresas ativas encontradas")
             return documentos

@@ -25,7 +25,7 @@ class ServiceBaseGemini(ABC):
         self.logger = get_logger("ia")
         self._api_key = dotenv.get_key(caminho_dotenv(), "KEY_API_GEMINI")
         self._sdk_disponivel = False
-        self._client = genai.Client(api_key=self._api_key) if self._api_key else None
+        self._client = None
         self._model = None
         self._default_config_kwargs = kwargs  # Armazena os kwargs padrão
         self._configurado = self._configurar_sdk()
@@ -35,6 +35,7 @@ class ServiceBaseGemini(ABC):
             logger.warning(f"IA: API Key não configurada para {self.__class__.__name__}")
             return False
         try:
+            self._client = genai.Client(api_key=self.api_key)
             self._sdk_disponivel = True
             return True
         except ImportError:
@@ -73,7 +74,7 @@ class ServiceBaseMistral(ABC):
     def __init__(self, **kwargs):
         self._api_key = dotenv.get_key(caminho_dotenv(), "KEY_API_MISTRAL")
         self._sdk_disponivel = False
-        self._client = Mistral(api_key=self._api_key) if self._api_key else None
+        self._client = None
         self._model = None
         self._configurado = self._configurar_sdk()
     
@@ -82,6 +83,7 @@ class ServiceBaseMistral(ABC):
             logger.warning(f"IA: API Key não configurada para {self.__class__.__name__}")
             return False
         try:
+            self._client = Mistral(api_key=self.api_key)
             self._sdk_disponivel = True
             return True
         except ImportError:

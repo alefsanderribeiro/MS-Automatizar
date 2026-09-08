@@ -18,7 +18,7 @@ import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
 from src.utils.retry_utils import retry_com_log
-from src.utils.telefone_utils import normalizar_telefone
+from src.utils.telefone_utils import normalizar_telefone, validar_telefone
 from src.utils.logger_config_v2 import get_logger
 
 logger = get_logger("whatsapp")
@@ -326,121 +326,118 @@ class WhatsAppService:
         Returns:
             Dict com resultado: {"sucesso": bool, "mensagem": str, "detalhes": ...}
         """
-        with self.logger.system_logger.correlation("enviar_whatsapp_arquivo") as corr_id:
-            self.logger.info("Iniciando envio de arquivo WhatsApp", correlation_id=corr_id)
-            if not self._disponivel:
-                return {
-                    "sucesso": False,
-                    "mensagem": "WhatsApp API não disponível",
-                    "detalhes": None
-                }
+        if not self._disponivel:
+            return {
+                "sucesso": False,
+                "mensagem": "WhatsApp API não disponível",
+                "detalhes": None
+            }
         
-            # Verificar conexão
-            status = self.verificar_status()
-            if not status.get("conectado"):
-                return {
-                    "sucesso": False,
-                    "mensagem": "WhatsApp não conectado",
-                    "detalhes": status
-                }
+        # Verificar conexão
+        status = self.verificar_status()
+        if not status.get("conectado"):
+            return {
+                "sucesso": False,
+                "mensagem": "WhatsApp não conectado",
+                "detalhes": status
+            }
         
-            # Validar arquivo
-            if not os.path.exists(arquivo_path):
-                return {
-                    "sucesso": False,
-                    "mensagem": f"Arquivo não encontrado: {arquivo_path}",
-                    "detalhes": None
-                }
+        # Validar arquivo
+        if not os.path.exists(arquivo_path):
+            return {
+                "sucesso": False,
+                "mensagem": f"Arquivo não encontrado: {arquivo_path}",
+                "detalhes": None
+            }
         
-            try:
-                # Preparar destinatário
-                if is_grupo:
-                    # Já deve ser um JID de grupo (ex: 123456@g.us)
-                    to = destinatario if "@g.us" in destinatario else f"{destinatario}@g.us"
-                else:
-                    # Normalizar telefone
-                    to = normalizar_telefone(destinatario)
-                    if not to:
-                        return {
-                            "sucesso": False,
-                            "mensagem": f"Telefone invalido: {destinatario}",
-                            "detalhes": None
-                        }
-
-                # Preparar multipart form data
-                nome_arquivo = os.path.basename(arquivo_path)
-
-                # Se device_id foi fornecido, obter seu ID interno (não o JID)
-                device_id_header = None
-                device_id_param = None
-
-                if device_id:
-                    device_id_header = self.obter_id_dispositivo_por_jid(device_id)
-                    if device_id_header:
-                        logger.info(f"Usando device header: {device_id_header} ({device_id})")
-                    else:
-                        # Se não encontrou o ID, usar o JID como fallback
-                        device_id_param = device_id
-                        logger.info(f"Usando device como query param: {device_id}")
-
-                with open(arquivo_path, "rb") as f:
-                    files = {
-                        "file": (nome_arquivo, f, "application/pdf")
-                    }
-
-                    data = {
-                        "phone": to,
-                        "caption": mensagem or ""
-                    }
-
-                    # Montar URL com query parameters se necessário
-                    url = f"{self.api_url}{self.ENDPOINT_SEND_FILE}"
-                    if device_id_param:
-                        url = f"{url}?device_id={device_id_param}"
-
-                    response = requests.post(
-                        url,
-                        headers=self._get_headers(device_id_header),
-                        data=data,
-                        files=files,
-                        timeout=120
-                    )
-            
-                if response.status_code == 200:
-                    dados = response.json()
-                
-                    logger.info(f"✓ Arquivo enviado para {to}: {nome_arquivo}")
-                
-                    # API v8+ usa "results", API antiga usa "data"
-                    results = dados.get("results") or dados.get("data", {})
-                
-                    self.logger.info("Envio de arquivo WhatsApp concluído", correlation_id=corr_id)
-                    return {
-                        "sucesso": True,
-                        "mensagem": "Arquivo enviado com sucesso",
-                        "detalhes": {
-                            "destinatario": to,
-                            "arquivo": nome_arquivo,
-                            "message_id": results.get("message_id") if isinstance(results, dict) else None
-                        }
-                    }
-                else:
-                    erro_msg = f"Erro ao enviar arquivo: {response.status_code} - {response.text}"
-                    logger.error(erro_msg)
+        try:
+            # Preparar destinatário
+            if is_grupo:
+                # Já deve ser um JID de grupo (ex: 123456@g.us)
+                to = destinatario if "@g.us" in destinatario else f"{destinatario}@g.us"
+            else:
+                # Normalizar telefone
+                to = normalizar_telefone(destinatario)
+                if not to:
                     return {
                         "sucesso": False,
-                        "mensagem": erro_msg,
-                        "detalhes": response.json() if response.text else None
+                        "mensagem": f"Telefone invalido: {destinatario}",
+                        "detalhes": None
                     }
 
-            except Exception as e:
-                erro_msg = f"Erro ao enviar arquivo: {e}"
+            # Preparar multipart form data
+            nome_arquivo = os.path.basename(arquivo_path)
+
+            # Se device_id foi fornecido, obter seu ID interno (não o JID)
+            device_id_header = None
+            device_id_param = None
+
+            if device_id:
+                device_id_header = self.obter_id_dispositivo_por_jid(device_id)
+                if device_id_header:
+                    logger.info(f"Usando device header: {device_id_header} ({device_id})")
+                else:
+                    # Se não encontrou o ID, usar o JID como fallback
+                    device_id_param = device_id
+                    logger.info(f"Usando device como query param: {device_id}")
+
+            with open(arquivo_path, "rb") as f:
+                files = {
+                    "file": (nome_arquivo, f, "application/pdf")
+                }
+
+                data = {
+                    "phone": to,
+                    "caption": mensagem or ""
+                }
+
+                # Montar URL com query parameters se necessário
+                url = f"{self.api_url}{self.ENDPOINT_SEND_FILE}"
+                if device_id_param:
+                    url = f"{url}?device_id={device_id_param}"
+
+                response = requests.post(
+                    url,
+                    headers=self._get_headers(device_id_header),
+                    data=data,
+                    files=files,
+                    timeout=120
+                )
+            
+            if response.status_code == 200:
+                dados = response.json()
+                
+                logger.info(f"✓ Arquivo enviado para {to}: {nome_arquivo}")
+                
+                # API v8+ usa "results", API antiga usa "data"
+                results = dados.get("results") or dados.get("data", {})
+                
+                return {
+                    "sucesso": True,
+                    "mensagem": "Arquivo enviado com sucesso",
+                    "detalhes": {
+                        "destinatario": to,
+                        "arquivo": nome_arquivo,
+                        "message_id": results.get("message_id") if isinstance(results, dict) else None
+                    }
+                }
+            else:
+                erro_msg = f"Erro ao enviar arquivo: {response.status_code} - {response.text}"
                 logger.error(erro_msg)
                 return {
                     "sucesso": False,
                     "mensagem": erro_msg,
-                    "detalhes": None
+                    "detalhes": response.json() if response.text else None
                 }
+        
+        except Exception as e:
+            erro_msg = f"Erro ao enviar arquivo: {e}"
+            logger.error(erro_msg)
+            return {
+                "sucesso": False,
+                "mensagem": erro_msg,
+                "detalhes": None
+            }
     
     @retry_com_log()
     def enviar_texto(self,
@@ -460,96 +457,93 @@ class WhatsAppService:
         Returns:
             Dict com resultado: {"sucesso": bool, "mensagem": str, "detalhes": ...}
         """
-        with self.logger.system_logger.correlation("enviar_whatsapp_texto") as corr_id:
-            self.logger.info("Iniciando envio de texto WhatsApp", correlation_id=corr_id)
-            if not self._disponivel:
-                return {
-                    "sucesso": False,
-                    "mensagem": "WhatsApp API não disponível",
-                    "detalhes": None
-                }
+        if not self._disponivel:
+            return {
+                "sucesso": False,
+                "mensagem": "WhatsApp API não disponível",
+                "detalhes": None
+            }
         
-            # Verificar conexão
-            status = self.verificar_status()
-            if not status.get("conectado"):
-                return {
-                    "sucesso": False,
-                    "mensagem": "WhatsApp não conectado",
-                    "detalhes": status
-                }
+        # Verificar conexão
+        status = self.verificar_status()
+        if not status.get("conectado"):
+            return {
+                "sucesso": False,
+                "mensagem": "WhatsApp não conectado",
+                "detalhes": status
+            }
         
-            try:
-                # Preparar destinatário
-                if is_grupo:
-                    to = destinatario if "@g.us" in destinatario else f"{destinatario}@g.us"
-                else:
-                    to = normalizar_telefone(destinatario)
-                    if not to:
-                        return {
-                            "sucesso": False,
-                            "mensagem": f"Telefone invalido: {destinatario}",
-                            "detalhes": None
-                        }
-
-                # Se device_id foi fornecido, obter seu ID interno (não o JID)
-                device_id_header = None
-                device_id_param = None
-
-                if device_id:
-                    device_id_header = self.obter_id_dispositivo_por_jid(device_id)
-                    if device_id_header:
-                        logger.info(f"Usando device header: {device_id_header} ({device_id})")
-                    else:
-                        # Se não encontrou o ID, usar o JID como fallback
-                        device_id_param = device_id
-                        logger.info(f"Usando device como query param: {device_id}")
-
-                # Montar URL com query parameters se necessário
-                url = f"{self.api_url}{self.ENDPOINT_SEND_MESSAGE}"
-                if device_id_param:
-                    url = f"{url}?device_id={device_id_param}"
-
-                response = requests.post(
-                    url,
-                    headers=self._get_headers(device_id_header),
-                    json={
-                        "phone": to,
-                        "message": mensagem
-                    },
-                    timeout=30
-                )
-            
-                if response.status_code == 200:
-                    dados = response.json()
-                
-                    logger.info(f"✓ Texto enviado para {to}")
-
-                    self.logger.info("Envio de texto WhatsApp concluído", correlation_id=corr_id)
-                    return {
-                        "sucesso": True,
-                        "mensagem": "Texto enviado com sucesso",
-                        "detalhes": {
-                            "destinatario": to,
-                            "message_id": dados.get("results", {}).get("message_id") or dados.get("data", {}).get("message_id")
-                        }
-                    }
-                else:
-                    erro_msg = f"Erro ao enviar texto: {response.status_code} - {response.text}"
-                    logger.error(erro_msg)
+        try:
+            # Preparar destinatário
+            if is_grupo:
+                to = destinatario if "@g.us" in destinatario else f"{destinatario}@g.us"
+            else:
+                to = normalizar_telefone(destinatario)
+                if not to:
                     return {
                         "sucesso": False,
-                        "mensagem": erro_msg,
+                        "mensagem": f"Telefone invalido: {destinatario}",
                         "detalhes": None
                     }
 
-            except Exception as e:
-                erro_msg = f"Erro ao enviar texto: {e}"
+            # Se device_id foi fornecido, obter seu ID interno (não o JID)
+            device_id_header = None
+            device_id_param = None
+
+            if device_id:
+                device_id_header = self.obter_id_dispositivo_por_jid(device_id)
+                if device_id_header:
+                    logger.info(f"Usando device header: {device_id_header} ({device_id})")
+                else:
+                    # Se não encontrou o ID, usar o JID como fallback
+                    device_id_param = device_id
+                    logger.info(f"Usando device como query param: {device_id}")
+
+            # Montar URL com query parameters se necessário
+            url = f"{self.api_url}{self.ENDPOINT_SEND_MESSAGE}"
+            if device_id_param:
+                url = f"{url}?device_id={device_id_param}"
+
+            response = requests.post(
+                url,
+                headers=self._get_headers(device_id_header),
+                json={
+                    "phone": to,
+                    "message": mensagem
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                dados = response.json()
+                
+                logger.info(f"✓ Texto enviado para {to}")
+                
+                return {
+                    "sucesso": True,
+                    "mensagem": "Texto enviado com sucesso",
+                    "detalhes": {
+                        "destinatario": to,
+                        "message_id": dados.get("results", {}).get("message_id") or dados.get("data", {}).get("message_id")
+                    }
+                }
+            else:
+                erro_msg = f"Erro ao enviar texto: {response.status_code} - {response.text}"
                 logger.error(erro_msg)
                 return {
                     "sucesso": False,
                     "mensagem": erro_msg,
                     "detalhes": None
                 }
+        
+        except Exception as e:
+            erro_msg = f"Erro ao enviar texto: {e}"
+            logger.error(erro_msg)
+            return {
+                "sucesso": False,
+                "mensagem": erro_msg,
+                "detalhes": None
+            }
     
     def enviar_multiplos_arquivos(self,
                                    destinatario: str,
@@ -580,94 +574,90 @@ class WhatsAppService:
         Returns:
             Dict com resultado consolidado
         """
-        with self.logger.system_logger.correlation("enviar_whatsapp_multiplos") as corr_id:
-            self.logger.info("Iniciando envio múltiplos WhatsApp", correlation_id=corr_id)
-            if not arquivos:
-                return {
-                    "sucesso": False,
-                    "mensagem": "Nenhum arquivo para enviar",
-                    "detalhes": None
-                }
-        
-            resultados = {
-                "mensagem_enviada": False,
-                "arquivos_enviados": [],
-                "erros": []
+        if not arquivos:
+            return {
+                "sucesso": False,
+                "mensagem": "Nenhum arquivo para enviar",
+                "detalhes": None
             }
         
-            # 1. PRIMEIRO: Enviar a mensagem de texto (se houver)
-            if mensagem and mensagem.strip():
-                logger.info(f"📤 Enviando mensagem de texto para {destinatario}...")
-                resultado_msg = self.enviar_texto(destinatario, mensagem, is_grupo, device_id)
-            
-                if resultado_msg.get("sucesso"):
-                    resultados["mensagem_enviada"] = True
-                    logger.info(f"✓ Mensagem de texto enviada")
-                    # Pequeno delay após enviar mensagem
-                    time.sleep(self.DELAY_APOS_MENSAGEM)
-                else:
-                    resultados["erros"].append({
-                        "tipo": "mensagem",
-                        "erro": resultado_msg.get("mensagem")
-                    })
-                    logger.warning(f"⚠ Falha ao enviar mensagem: {resultado_msg.get('mensagem')}")
-                    # Delay maior após erro
-                    time.sleep(self.DELAY_APOS_ERRO)
+        resultados = {
+            "mensagem_enviada": False,
+            "arquivos_enviados": [],
+            "erros": []
+        }
         
-            # 2. DEPOIS: Enviar os arquivos em sequência (SEM caption, já que a mensagem foi enviada)
-            total_arquivos = len(arquivos)
-            for idx, arquivo in enumerate(arquivos, 1):
-                nome_arquivo = os.path.basename(arquivo)
-                logger.info(f"📤 Enviando arquivo {idx}/{total_arquivos}: {nome_arquivo}")
+        # 1. PRIMEIRO: Enviar a mensagem de texto (se houver)
+        if mensagem and mensagem.strip():
+            logger.info(f"📤 Enviando mensagem de texto para {destinatario}...")
+            resultado_msg = self.enviar_texto(destinatario, mensagem, is_grupo, device_id)
             
-                # Envia arquivo SEM caption (a mensagem já foi enviada separadamente)
-                resultado = self.enviar_arquivo(destinatario, arquivo, "", is_grupo, device_id)
-            
-                if resultado.get("sucesso"):
-                    resultados["arquivos_enviados"].append(nome_arquivo)
-                    logger.info(f"✓ Arquivo enviado: {nome_arquivo}")
-                
-                    # Delay entre arquivos (não precisa após o último)
-                    if idx < total_arquivos:
-                        time.sleep(self.DELAY_ENTRE_ARQUIVOS)
-                else:
-                    resultados["erros"].append({
-                        "tipo": "arquivo",
-                        "arquivo": nome_arquivo,
-                        "erro": resultado.get("mensagem")
-                    })
-                    logger.warning(f"⚠ Falha ao enviar {nome_arquivo}: {resultado.get('mensagem')}")
-                    # Delay maior após erro
-                    time.sleep(self.DELAY_APOS_ERRO)
-        
-            # Consolidar resultado
-            total = len(arquivos)
-            enviados = len(resultados["arquivos_enviados"])
-            msg_ok = resultados["mensagem_enviada"]
-        
-            if enviados == total and (not mensagem or msg_ok):
-                self.logger.info("Envio múltiplos WhatsApp concluído", correlation_id=corr_id)
-                return {
-                    "sucesso": True,
-                    "mensagem": f"Mensagem + {total} arquivo(s) enviados com sucesso" if mensagem else f"{total} arquivo(s) enviados",
-                    "detalhes": resultados
-                }
-            elif enviados > 0 or msg_ok:
-                self.logger.info("Envio múltiplos WhatsApp concluído (parcial)", correlation_id=corr_id)
-                return {
-                    "sucesso": True,
-                    "parcial": True,
-                    "mensagem": f"Parcial: msg={'✓' if msg_ok else '✗'}, arquivos={enviados}/{total}",
-                    "detalhes": resultados
-                }
+            if resultado_msg.get("sucesso"):
+                resultados["mensagem_enviada"] = True
+                logger.info(f"✓ Mensagem de texto enviada")
+                # Pequeno delay após enviar mensagem
+                time.sleep(self.DELAY_APOS_MENSAGEM)
             else:
-                return {
-                    "sucesso": False,
-                    "mensagem": f"Falha ao enviar (msg={'✗' if mensagem else 'N/A'}, arquivos=0/{total})",
-                    "detalhes": resultados
-                }
+                resultados["erros"].append({
+                    "tipo": "mensagem",
+                    "erro": resultado_msg.get("mensagem")
+                })
+                logger.warning(f"⚠ Falha ao enviar mensagem: {resultado_msg.get('mensagem')}")
+                # Delay maior após erro
+                time.sleep(self.DELAY_APOS_ERRO)
+        
+        # 2. DEPOIS: Enviar os arquivos em sequência (SEM caption, já que a mensagem foi enviada)
+        total_arquivos = len(arquivos)
+        for idx, arquivo in enumerate(arquivos, 1):
+            nome_arquivo = os.path.basename(arquivo)
+            logger.info(f"📤 Enviando arquivo {idx}/{total_arquivos}: {nome_arquivo}")
+            
+            # Envia arquivo SEM caption (a mensagem já foi enviada separadamente)
+            resultado = self.enviar_arquivo(destinatario, arquivo, "", is_grupo, device_id)
+            
+            if resultado.get("sucesso"):
+                resultados["arquivos_enviados"].append(nome_arquivo)
+                logger.info(f"✓ Arquivo enviado: {nome_arquivo}")
+                
+                # Delay entre arquivos (não precisa após o último)
+                if idx < total_arquivos:
+                    time.sleep(self.DELAY_ENTRE_ARQUIVOS)
+            else:
+                resultados["erros"].append({
+                    "tipo": "arquivo",
+                    "arquivo": nome_arquivo,
+                    "erro": resultado.get("mensagem")
+                })
+                logger.warning(f"⚠ Falha ao enviar {nome_arquivo}: {resultado.get('mensagem')}")
+                # Delay maior após erro
+                time.sleep(self.DELAY_APOS_ERRO)
+        
+        # Consolidar resultado
+        total = len(arquivos)
+        enviados = len(resultados["arquivos_enviados"])
+        msg_ok = resultados["mensagem_enviada"]
+        
+        if enviados == total and (not mensagem or msg_ok):
+            return {
+                "sucesso": True,
+                "mensagem": f"Mensagem + {total} arquivo(s) enviados com sucesso" if mensagem else f"{total} arquivo(s) enviados",
+                "detalhes": resultados
+            }
+        elif enviados > 0 or msg_ok:
+            return {
+                "sucesso": True,
+                "parcial": True,
+                "mensagem": f"Parcial: msg={'✓' if msg_ok else '✗'}, arquivos={enviados}/{total}",
+                "detalhes": resultados
+            }
+        else:
+            return {
+                "sucesso": False,
+                "mensagem": f"Falha ao enviar (msg={'✗' if mensagem else 'N/A'}, arquivos=0/{total})",
+                "detalhes": resultados
+            }
 
-        # ==================== DISPOSITIVOS (MULTIDEVICE) ====================
+    # ==================== DISPOSITIVOS (MULTIDEVICE) ====================
 
     def obter_id_dispositivo_por_jid(self, jid: str) -> Optional[str]:
         """

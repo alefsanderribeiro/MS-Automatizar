@@ -714,9 +714,16 @@ class PerformanceContext:
 class CorrelationContext:
     """Context manager para correlation IDs"""
     
-    def __init__(self, logger: SystemLogger, operation: str):
-        self.logger = logger
-        self.operation = operation
+    def __init__(self, logger: Optional[SystemLogger] = None, operation: Optional[str] = None, label: Optional[str] = None):
+        """
+        Cria um contexto de correlation ID.
+
+        O nome canônico do parâmetro é ``operation``. ``label`` é aceito como
+        alias para manter compatibilidade com callers antigos; usar ``operation``
+        em código novo.
+        """
+        self.logger = logger if logger is not None else SystemLogger()
+        self.operation = operation if operation is not None else label
         self.correlation_id = None
     
     def __enter__(self):
