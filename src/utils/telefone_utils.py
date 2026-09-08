@@ -6,7 +6,9 @@ Normaliza diferentes formatos para o padrão do WhatsApp
 import re
 import unicodedata
 from typing import Optional, Tuple
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("telefone")
 
 
 # DDDs válidos do Brasil (por região)

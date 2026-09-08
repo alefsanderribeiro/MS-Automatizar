@@ -7,7 +7,6 @@ Fornece:
 
 Uso:
     from src.services.historico_decorators import registrar_historico, HistoricoMixin
-from src.utils.logger_config_v2 import get_logger
 
     
     class MeuService(HistoricoMixin):
@@ -20,6 +19,10 @@ from src.utils.logger_config_v2 import get_logger
 from functools import wraps
 from typing import Optional, Dict, Any, List, Callable
 from datetime import datetime, timezone
+
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("historico")
 
 def registrar_historico(
     campos_rastrear: Optional[List[str]] = None,

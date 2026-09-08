@@ -20,7 +20,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Union
 
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("pdf")
 
 try:
     import pypdfium2 as _pdfium

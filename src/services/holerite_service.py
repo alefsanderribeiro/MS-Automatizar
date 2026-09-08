@@ -10,12 +10,10 @@ from pathlib import Path
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.services.mongodb_connection import MongoDBConnectionPool, retry_mongodb, medir_tempo
+from src.services.mongodb_connection import MongoDBConnectionPool
 from src.models.holerite_models import (
     HoleriteMongoDB,
-    EnvioHoleriteMongoDB,
-    StatusHoleriteEnum,
-    TipoFolhaEnum
+    StatusHoleriteEnum
 )
 from src.utils.logger_config_v2 import get_logger
 

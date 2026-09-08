@@ -17,6 +17,8 @@ from src.models.contato_funcionario_models import (
 )
 from src.utils.logger_config_v2 import get_logger
 
+logger = get_logger("contato")
+
 try:
     from pymongo import ASCENDING, DESCENDING
     from pymongo.errors import DuplicateKeyError

@@ -14,13 +14,14 @@ import urllib.parse
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 import dotenv
 import re
 
 from src.utils.dotenv_path import caminho_dotenv
 from src.utils.retry_utils import retry_com_log
 from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("email")
 
 
 # Tentativa de importação de requests

@@ -15,6 +15,8 @@ from src.services.analise_ai_service import GeminiService, MistralService
 from src.services.cache_ocr_service import cache_ocr
 from src.utils.logger_config_v2 import get_logger
 
+logger = get_logger("holerite")
+
 # Define o locale para português do Brasil, de forma segura (nunca quebra o
 # import em sistemas que não têm o locale instalado — ex.: muitos servidores
 # Linux). Se nenhuma variante for encontrada, mantém o locale padrão e segue.

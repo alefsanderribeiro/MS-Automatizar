@@ -9,10 +9,12 @@ from datetime import datetime, timezone
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.services.mongodb_connection import MongoDBConnectionPool, retry_mongodb, medir_tempo
+from src.services.mongodb_connection import MongoDBConnectionPool
 from src.services.historico_decorators import registrar_historico, HistoricoMixin
 from src.services.cache_service import cache_service
 from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("empresa")
 
 
 try:

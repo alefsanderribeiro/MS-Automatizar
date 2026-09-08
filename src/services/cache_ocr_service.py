@@ -24,6 +24,8 @@ from src.services.folha_ponto_service import (
     MONGODB_DISPONIVEL
 )
 from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("mongodb")
 from src.services.funcionario_service import (
     FuncionarioService,
     funcionario_service

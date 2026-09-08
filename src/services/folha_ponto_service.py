@@ -225,7 +225,6 @@ class FolhaDePontoService:
         
         try:
             from datetime import date, datetime
-            import json
             
             # Se receber uma instância Pydantic, converter para dict
             if hasattr(folha_mongodb, 'dict'):

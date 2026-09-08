@@ -20,6 +20,8 @@ from src.utils.dotenv_path import caminho_dotenv
 from src.utils.telefone_utils import parsear_multiplos_telefones
 from src.utils.logger_config_v2 import get_logger
 
+logger = get_logger("planilha")
+
 
 # Tentativa de importação do pandas
 try:
