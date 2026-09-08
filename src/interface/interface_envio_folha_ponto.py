@@ -580,6 +580,12 @@ def menu_dispositivos():
         pausar()
 
 
+def _abrir_contatos_envio() -> None:
+    """Abre o menu de Contatos de Envio de Folha de Ponto."""
+    from src.interface.interface_contatos_folha_ponto import InterfaceContatosFolhaPonto
+    InterfaceContatosFolhaPonto().executar()
+
+
 def menu_principal():
     """Menu principal do sistema de envio"""
     menu = (
@@ -594,6 +600,8 @@ def menu_principal():
         .adicionar("Executar Envio", menu_enviar_real)
         .separador()
         .adicionar("Historico de Envios", menu_historico)
+        .separador()
+        .adicionar("Gerenciar Contatos de Envio", _abrir_contatos_envio)
     )
 
     menu.executar()
