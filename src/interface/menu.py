@@ -92,6 +92,13 @@ def _verificar_ambiente_startup() -> dict:
     status = {
         "ambiente_valido": False,
         "mongodb_conectado": False,
+        "redis_conectado": False,
+        "whatsapp_api_ok": False,
+        "zoho_configurado": False,
+        "ia_configurada": False,
+        "ia_provedor": "",
+        "modo_operacao": "",
+        "weasyprint_ok": False,
         "avisos": []
     }
 
@@ -116,6 +123,58 @@ def _verificar_ambiente_startup() -> dict:
         logger.warning(f"Erro ao verificar MongoDB: {e}")
         status["avisos"].append(f"Erro ao verificar MongoDB: {e}")
 
+    # Verificar Redis
+    try:
+        import redis as redis_lib
+        r = redis_lib.Redis(
+            host=os.getenv("REDIS_HOST", "localhost"),
+            port=int(os.getenv("REDIS_PORT", 6379)),
+            password=os.getenv("REDIS_PASSWORD", ""),
+            socket_timeout=2,
+        )
+        r.ping()
+        status["redis_conectado"] = True
+    except Exception:
+        status["redis_conectado"] = False
+
+    # Verificar WhatsApp API
+    try:
+        import httpx
+        api_url = os.getenv("WHATSAPP_API_URL", "")
+        if api_url:
+            resp = httpx.get(f"{api_url}/health", timeout=2)
+            status["whatsapp_api_ok"] = resp.status_code == 200
+        else:
+            status["whatsapp_api_ok"] = False
+    except Exception:
+        status["whatsapp_api_ok"] = False
+
+    # Verificar Zoho Mail
+    status["zoho_configurado"] = bool(os.getenv("ZOHO_CLIENT_ID")) and bool(os.getenv("ZOHO_REFRESH_TOKEN"))
+
+    # Verificar IA (Gemini ou Mistral)
+    gemini_key = os.getenv("KEY_API_GEMINI", "")
+    mistral_key = os.getenv("KEY_API_MISTRAL", "")
+    if gemini_key:
+        status["ia_configurada"] = True
+        status["ia_provedor"] = "Gemini"
+    elif mistral_key:
+        status["ia_configurada"] = True
+        status["ia_provedor"] = "Mistral"
+    else:
+        status["ia_configurada"] = False
+        status["ia_provedor"] = "Nenhum"
+
+    # Modo de operação
+    status["modo_operacao"] = os.getenv("MODO_OPERACAO", "mongodb")
+
+    # Verificar WeasyPrint
+    try:
+        import weasyprint  # noqa: F401
+        status["weasyprint_ok"] = True
+    except ImportError:
+        status["weasyprint_ok"] = False
+
     return status
 
 
@@ -133,9 +192,34 @@ def _exibir_status_sistema(status: dict) -> None:
     mongo_icon = ICONES["sucesso"] if status["mongodb_conectado"] else ICONES["erro"]
     mongo_status = "[green]Conectado[/green]" if status["mongodb_conectado"] else "[red]Desconectado[/red]"
 
+    redis_icon = ICONES["sucesso"] if status["redis_conectado"] else ICONES["aviso"]
+    redis_status = "[green]Conectado[/green]" if status["redis_conectado"] else "[yellow]Off[/yellow]"
+
+    whatsapp_icon = ICONES["sucesso"] if status["whatsapp_api_ok"] else ICONES["aviso"]
+    whatsapp_status = "[green]On[/green]" if status["whatsapp_api_ok"] else "[yellow]Off[/yellow]"
+
+    zoho_icon = ICONES["sucesso"] if status["zoho_configurado"] else ICONES["aviso"]
+    zoho_status = "[green]Config[/green]" if status["zoho_configurado"] else "[yellow]Não config[/yellow]"
+
+    if status["ia_configurada"]:
+        ia_icon = ICONES["sucesso"]
+        ia_status = f"[green]{status['ia_provedor']}[/green]"
+    else:
+        ia_icon = ICONES["aviso"]
+        ia_status = "[yellow]Nenhum[/yellow]"
+
+    weasyprint_icon = ICONES["sucesso"] if status["weasyprint_ok"] else ICONES["aviso"]
+    weasyprint_status = "[green]OK[/green]" if status["weasyprint_ok"] else "[yellow]Não instalado[/yellow]"
+
     conteudo = f"""
 {ambiente_icon} Ambiente: {ambiente_status}
 {mongo_icon} MongoDB: {mongo_status}
+{redis_icon} Redis: {redis_status}
+{whatsapp_icon} WhatsApp: {whatsapp_status}
+{zoho_icon} Zoho Mail: {zoho_status}
+{ia_icon} IA: {ia_status}
+{ICONES['info']} Modo: {status['modo_operacao']}
+{weasyprint_icon} WeasyPrint: {weasyprint_status}
 """
 
     if status["avisos"]:
