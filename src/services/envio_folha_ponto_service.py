@@ -51,6 +51,8 @@ class EnvioFolhaPontoService(HistoricoMixin):
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
         
+        self.logger = get_logger("envio_folha_ponto")
+        
         if not MONGODB_DISPONIVEL:
             logger.error("MongoDB não disponível para Envios de Folha de Ponto")
             self.db = None

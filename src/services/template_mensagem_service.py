@@ -52,7 +52,7 @@ class TemplateMensagemService(HistoricoMixin):
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
         
-        self.logger = get_logger("template")
+        self.logger = get_logger("template_mensagem")
         
         # Cache em memória
         self._cache_templates: Dict[str, Dict[str, Any]] = {}
@@ -128,8 +128,7 @@ class TemplateMensagemService(HistoricoMixin):
     def _inicializar_templates_padrao(self) -> None:
         """Inicializa templates padrão se não existirem"""
         try:
-            with self.logger.performance("inicializar_count"):
-                count = self.colecao.count_documents({})
+            count = self.colecao.count_documents({})
             if count == 0:
                 logger.info("Criando templates padrão...")
                 templates = criar_templates_padrao()
@@ -156,11 +155,10 @@ class TemplateMensagemService(HistoricoMixin):
                     tipo_value = tipo.value if hasattr(tipo, 'value') else str(tipo)
                 
                 # Verificar se já existe um template padrão para este tipo
-                with self.logger.performance("buscar_template_faltante"):
-                    existente = self.colecao.find_one({
-                        "tipo": tipo_value,
-                        "is_padrao": True
-                    })
+                existente = self.colecao.find_one({
+                    "tipo": tipo_value,
+                    "is_padrao": True
+                })
                 
                 if not existente:
                     self.criar(template_data)
@@ -236,8 +234,7 @@ class TemplateMensagemService(HistoricoMixin):
             return self._cache_templates[template_id]
         
         try:
-            with self.logger.performance("buscar_por_id"):
-                doc = self.colecao.find_one({"_id": ObjectId(template_id)})
+            doc = self.colecao.find_one({"_id": ObjectId(template_id)})
             if doc:
                 self._cache_templates[template_id] = doc
             return doc
@@ -255,8 +252,7 @@ class TemplateMensagemService(HistoricoMixin):
             nfkd = unicodedata.normalize('NFKD', nome)
             nome_norm = ''.join([c for c in nfkd if not unicodedata.combining(c)]).lower()
             
-            with self.logger.performance("buscar_por_nome"):
-                return self.colecao.find_one({"nome_normalizado": nome_norm})
+            return self.colecao.find_one({"nome_normalizado": nome_norm})
         except Exception as e:
             logger.error(f"Erro ao buscar template por nome: {e}")
             return None
@@ -280,8 +276,7 @@ class TemplateMensagemService(HistoricoMixin):
             if apenas_ativos:
                 filtro["status"] = StatusTemplate.ATIVO.value
             
-            with self.logger.performance("buscar_por_tipo"):
-                return list(self.colecao.find(filtro).sort("is_padrao", -1))
+            return list(self.colecao.find(filtro).sort("is_padrao", -1))
         except Exception as e:
             logger.error(f"Erro ao buscar templates por tipo: {e}")
             return []
@@ -300,12 +295,11 @@ class TemplateMensagemService(HistoricoMixin):
             return None
         
         try:
-            with self.logger.performance("buscar_padrao_por_tipo"):
-                return self.colecao.find_one({
-                    "tipo": tipo.value if isinstance(tipo, TipoTemplateEnum) else tipo,
-                    "is_padrao": True,
-                    "status": StatusTemplate.ATIVO.value
-                })
+            return self.colecao.find_one({
+                "tipo": tipo.value if isinstance(tipo, TipoTemplateEnum) else tipo,
+                "is_padrao": True,
+                "status": StatusTemplate.ATIVO.value
+            })
         except Exception as e:
             logger.error(f"Erro ao buscar template padrão: {e}")
             return None
@@ -320,8 +314,7 @@ class TemplateMensagemService(HistoricoMixin):
             if apenas_ativos:
                 filtro["status"] = StatusTemplate.ATIVO.value
             
-            with self.logger.performance("listar_todos"):
-                return list(self.colecao.find(filtro).sort([("tipo", 1), ("nome", 1)]))
+            return list(self.colecao.find(filtro).sort([("tipo", 1), ("nome", 1)]))
         except Exception as e:
             logger.error(f"Erro ao listar templates: {e}")
             return []

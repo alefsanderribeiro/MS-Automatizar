@@ -65,6 +65,8 @@ class FeriadoService(HistoricoMixin):
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
         
+        self.logger = get_logger("feriado")
+        
         if not MONGODB_DISPONIVEL:
             logger.error(
                 "MongoDB não disponível. "
