@@ -580,6 +580,15 @@ def menu_dispositivos():
         pausar()
 
 
+def _abrir_contatos_envio():
+    """Abre a interface de gerenciamento de contatos de envio."""
+    try:
+        from src.interface.interface_contatos_folha_ponto import InterfaceContatosFolhaPonto
+        InterfaceContatosFolhaPonto().executar()
+    except Exception as e:
+        logger.error(f"Erro ao abrir interface de contatos: {e}")
+
+
 def menu_principal():
     """Menu principal do sistema de envio"""
     menu = (
