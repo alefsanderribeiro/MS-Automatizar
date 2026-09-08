@@ -112,6 +112,13 @@ def handle_referencias(args, parser):
         inativar_funcao(args.id)
 
 
+def contatos_subcommands(subparsers):
+    """
+    Adiciona subcomandos para gerenciar contatos de envio de folha de ponto.
+    """
+    contatos = subparsers.add_parser('contatos', help='Gerenciar contatos de envio de folha de ponto')
+
+
 def diretorios_subcommands(subparsers):
     """
     Adiciona subcomandos para gerenciar diretórios (paridade CLI/TUI).
@@ -174,6 +181,7 @@ def start_command():
     holerite_subcommands(subparsers)
     referencias_subcommands(subparsers)
     diretorios_subcommands(subparsers)
+    contatos_subcommands(subparsers)
     
     args = parser.parse_args()
     
@@ -200,6 +208,11 @@ def start_command():
         elif args.command == 'diretorios':
 
             handle_diretorios(args, parser)
+
+        elif args.command == 'contatos':
+
+            from src.comandos.contatos_folha_ponto import cmd_contatos_folha_ponto
+            cmd_contatos_folha_ponto()
             
 
 
