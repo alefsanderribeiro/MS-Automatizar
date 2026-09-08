@@ -73,8 +73,19 @@ class MongoDBContatosService:
             self.db = self.cliente[db_name]
             self._colecao = self.db[self.collection_name]
 
-            # Criar indice unico por funcionario_id
-            self._colecao.create_index("funcionario_id", unique=True, sparse=True)
+            # Criar indice unico por funcionario_id (ignorar se ja existe)
+            existing_index_names = [idx['name'] for idx in self._colecao.list_indexes()]
+            has_funcionario_id_index = any('funcionario_id' in name for name in existing_index_names)
+            if not has_funcionario_id_index:
+                try:
+                    self._colecao.create_index(
+                        "funcionario_id",
+                        unique=True,
+                        sparse=True,
+                        name="idx_funcionario_id_contato"
+                    )
+                except Exception:
+                    pass  # Indice ja existe
 
             self._disponivel = True
             logger.debug(f"MongoDB Contatos Service conectado (colecao: {self.collection_name})")
