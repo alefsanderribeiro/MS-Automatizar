@@ -583,8 +583,8 @@ def menu_dispositivos():
 def _abrir_contatos_envio():
     """Abre a interface de gerenciamento de contatos de envio."""
     try:
-        from src.interface.interface_contatos_folha_ponto import InterfaceContatosFolhaPonto
-        InterfaceContatosFolhaPonto().executar()
+        from src.interface.interface_contatos_folha_ponto import Interface_Contatos_Folha_Ponto
+        Interface_Contatos_Folha_Ponto()
     except Exception as e:
         logger.error(f"Erro ao abrir interface de contatos: {e}")
 
