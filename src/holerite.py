@@ -79,7 +79,7 @@ class PdfProcessorService(IPdfProcessor):
 
         self.logger = get_logger("holerite")
         self.diretorio_processamento = diretorio_processamento
-        self.coordenadas_cabecalho = ((50, 785), (363, 795))
+        self.coordenadas_cabecalho = ((120, 785), (363, 795))
     
     def extrair_cabecalho(self, arquivo: Path) -> Path:
         self.diretorio_processamento.mkdir(parents=True, exist_ok=True)
