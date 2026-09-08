@@ -101,6 +101,111 @@ def _mostrar_estatisticas_rapidas():
             exibir_info(f"Total de contatos: {total}")
 
 
+def _visualizar_documentos_contato():
+    """Visualiza quais documentos (PDFs) serao enviados para um contato"""
+    exibir_cabecalho("Visualizar Documentos por Contato")
+
+    # Pedir mes/ano de referencia
+    mes = pedir_inteiro("Mes de referencia (1-12)", minimo=1, maximo=12)
+    if mes is None:
+        return
+
+    ano = pedir_inteiro("Ano de referencia", minimo=2020, maximo=2030)
+    if ano is None:
+        return
+
+    exibir_info(f"Periodo: {mes:02d}/{ano}")
+
+    # Listar contatos com envio ativo
+    contatos = contatos_folha_ponto_service.listar_todos()
+    contatos_com_envio = [c for c in contatos if any([
+        c.get("enviar_email"),
+        c.get("enviar_whatsapp"),
+        c.get("enviar_grupo_whatsapp")
+    ])]
+
+    if not contatos_com_envio:
+        exibir_aviso("Nenhum contato com envio ativo encontrado")
+        pausar()
+        return
+
+    # Mostrar lista resumida
+    table = exibir_tabela("Contatos com Envio Ativo")
+    table.add_column("#", style="dim")
+    table.add_column("Nome")
+    table.add_column("Local")
+    table.add_column("Envios")
+
+    for i, c in enumerate(contatos_com_envio, 1):
+        nome = c.get("nome", "(sem nome)") or "(sem nome)"
+        local = c.get("local_contrato_polo", "-")[:30]
+        envios = []
+        if c.get("enviar_email"): envios.append("📧")
+        if c.get("enviar_whatsapp"): envios.append("💬")
+        if c.get("enviar_grupo_whatsapp"): envios.append("👥")
+        table.add_row(str(i), nome, local, " ".join(envios))
+
+    console.print(table)
+    console.print()
+
+    # Pedir selecao
+    opcao = pedir_inteiro("Selecione o numero do contato (0 para voltar)", minimo=0, maximo=len(contatos_com_envio))
+    if opcao is None or opcao == 0:
+        return
+
+    contato = contatos_com_envio[opcao - 1]
+
+    # Montar diretorio e listar PDFs
+    try:
+        from src.services.mongodb_contatos_service import MongoDBContatosService
+        s = MongoDBContatosService()
+
+        diretorio_geral = contato.get("diretorio_geral", "")
+        diretorio_especifico = contato.get("diretorio_especifico", "")
+
+        if diretorio_geral and diretorio_especifico:
+            diretorio_completo = s.montar_diretorio_completo(diretorio_geral, diretorio_especifico, mes, ano)
+            pdfs = s.listar_arquivos_pdf(diretorio_completo)
+        else:
+            diretorio_completo = "(diretorio nao configurado)"
+            pdfs = []
+    except Exception as e:
+        diretorio_completo = f"(erro: {e})"
+        pdfs = []
+
+    # Exibir detalhes
+    nome = contato.get("nome", "(sem nome)") or "(sem nome)"
+    empresa = contato.get("empresa", "-")
+    local = contato.get("local_contrato_polo", "-")
+
+    envios = []
+    if contato.get("enviar_email"): envios.append(f"📧 Email: {contato.get('email', '-')}")
+    if contato.get("enviar_whatsapp"): envios.append(f"💬 WhatsApp: {contato.get('telefone', '-')}")
+    if contato.get("enviar_grupo_whatsapp"): envios.append(f"👥 Grupo: {contato.get('grupo_whatsapp', '-')}")
+
+    conteudo = f"""[bold]{nome}[/bold]
+Empresa: {empresa}
+Local: {local}
+Periodo: {mes:02d}/{ano}
+
+[bold]Canais de envio:[/bold]
+{'chr(10)'.join(envios) if envios else 'Nenhum'}
+
+[bold]Diretorio:[/bold]
+{diretorio_completo}
+
+[bold]Documentos encontrados:[/bold] ({len(pdfs)} PDFs)"""
+
+    if pdfs:
+        for pdf in pdfs:
+            conteudo += f"\n  📄 {pdf}"
+    else:
+        conteudo += "\n  ⚠️ Nenhum PDF encontrado no diretorio"
+
+    exibir_painel(conteudo, titulo="Detalhes do Contato", estilo_borda="blue")
+    pausar()
+
+
 # ═══════════════════════════════════════════════════════════════
 # INTERFACE PRINCIPAL
 # ═══════════════════════════════════════════════════════════════
@@ -117,6 +222,7 @@ def Interface_Contatos_Folha_Ponto():
     (
         MenuBuilder("GERENCIAR CONTATOS DE ENVIO DE FOLHA DE PONTO", ICONES["funcionarios"])
         .adicionar("Listar contatos", _listar_contatos, ICONES["listar"])
+        .adicionar("Visualizar documentos por contato", _visualizar_documentos_contato, ICONES["buscar"])
         .adicionar("Buscar contato", _buscar_contato, ICONES["buscar"])
         .adicionar("Adicionar novo contato", _adicionar_contato, ICONES["criar"])
         .adicionar("Editar contato existente", _editar_contato, ICONES["editar"])
