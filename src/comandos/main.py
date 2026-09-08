@@ -115,6 +115,13 @@ def handle_referencias(args, parser):
         inativar_funcao(args.id)
 
 
+def contatos_subcommands(subparsers):
+    """
+    Adiciona subcomandos para gerenciar contatos de envio de folha de ponto.
+    """
+    contatos = subparsers.add_parser('contatos', help='Gerenciar contatos de envio de folha de ponto')
+
+
 def diretorios_subcommands(subparsers):
     """
     Adiciona subcomandos para gerenciar diretórios (paridade CLI/TUI).
