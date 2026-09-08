@@ -65,3 +65,5 @@ coverage_html/
 .DS_Store
 Thumbs.db
 .bootstrap/
+.xdgcache/
+_saida_teste/

@@ -14,9 +14,12 @@ from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from src.utils.retry_utils import obter_config_retry
+import dotenv
+from src.utils.dotenv_path import caminho_dotenv
 from src.models.envio_folha_ponto_models import TipoEnvioEnum, StatusEnvioEnum
 from src.models.template_mensagem_models import TipoTemplateEnum
 from src.services.planilha_contatos_service import planilha_contatos_service
+from src.services.mongodb_contatos_service import mongodb_contatos_service
 from src.services.envio_folha_ponto_service import envio_folha_ponto_service
 from src.services.template_mensagem_service import template_mensagem_service
 from src.services.grupo_whatsapp_service import grupo_whatsapp_service
@@ -122,17 +125,27 @@ class EnvioFolhaPontoOrquestrador:
     
     # ==================== VERIFICAÇÕES ====================
     
+    def _obter_modo_operacao(self) -> str:
+        """Obtem o modo de operacao do .env"""
+        env_path = caminho_dotenv()
+        dotenv.load_dotenv(env_path, override=True)
+        return os.getenv("MODO_OPERACAO", "local").lower()
+
     def verificar_servicos(self) -> Dict[str, bool]:
         """
-        Verifica disponibilidade de todos os serviços
+        Verifica disponibilidade de todos os servicos
         
         Returns:
-            Dict com status de cada serviço
+            Dict com status de cada servico
         """
-        self._reportar_progresso("Verificando serviços...")
+        self._reportar_progresso("Verificando servicos...")
+        
+        modo = self._obter_modo_operacao()
         
         status = {
-            "planilha": planilha_contatos_service.disponivel,
+            "modo_operacao": modo,
+            "planilha": planilha_contatos_service.disponivel if modo == "local" else False,
+            "mongodb_contatos": mongodb_contatos_service.disponivel if modo == "mongodb" else False,
             "mongodb_envios": envio_folha_ponto_service.disponivel,
             "mongodb_templates": template_mensagem_service.disponivel,
             "mongodb_grupos": grupo_whatsapp_service.disponivel,
@@ -159,7 +172,7 @@ class EnvioFolhaPontoOrquestrador:
         # Log
         for servico, disponivel in status.items():
             emoji = "✓" if disponivel else "✗"
-            logger.info(f"  {emoji} {servico}: {'OK' if disponivel else 'Indisponível'}")
+            logger.info(f"  {emoji} {servico}: {'OK' if disponivel else 'Indisponivel'}")
         
         return status
     
@@ -672,15 +685,25 @@ class EnvioFolhaPontoOrquestrador:
         # Verificar serviços
         status_servicos = self.verificar_servicos()
         
-        # Carregar planilha
-        if not planilha_contatos_service.carregar():
-            logger.error("Não foi possível carregar a planilha de contatos")
-            relatorio.erros.append({"erro": "Falha ao carregar planilha"})
-            relatorio.fim = datetime.now(timezone.utc)
-            return relatorio
-
-        # Iterar contatos (carregar ANTES do pre-processamento)
-        contatos = list(planilha_contatos_service.iterar_contatos(mes, ano))
+        # Carregar contatos (MongoDB ou Planilha)
+        modo = self._obter_modo_operacao()
+        
+        if modo == "mongodb":
+            logger.info("Modo MongoDB: carregando contatos do banco de dados")
+            if not mongodb_contatos_service.disponivel:
+                logger.error("MongoDB Contatos Service não disponível")
+                relatorio.erros.append({"erro": "MongoDB Contatos indisponível"})
+                relatorio.fim = datetime.now(timezone.utc)
+                return relatorio
+            contatos = list(mongodb_contatos_service.iterar_contatos(mes, ano))
+        else:
+            logger.info("Modo Local: carregando planilha")
+            if not planilha_contatos_service.carregar():
+                logger.error("Não foi possível carregar a planilha de contatos")
+                relatorio.erros.append({"erro": "Falha ao carregar planilha"})
+                relatorio.fim = datetime.now(timezone.utc)
+                return relatorio
+            contatos = list(planilha_contatos_service.iterar_contatos(mes, ano))
 
         # Filtrar por IDs se especificado
         if contatos_ids:
