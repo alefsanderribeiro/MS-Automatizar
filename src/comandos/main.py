@@ -18,6 +18,9 @@ from src.comandos.diretorios import (
     criar_diretorio_para_contrato, atualizar_diretorio_interativo,
     exibir_estatisticas_diretorios, criar_diretorios_todos_contratos
 )
+from src.comandos.contatos_folha_ponto import (
+    contatos_subcommands, handle_contatos
+)
 
 
 
@@ -174,6 +177,7 @@ def start_command():
     holerite_subcommands(subparsers)
     referencias_subcommands(subparsers)
     diretorios_subcommands(subparsers)
+    contatos_subcommands(subparsers)
     
     args = parser.parse_args()
     
@@ -200,6 +204,10 @@ def start_command():
         elif args.command == 'diretorios':
 
             handle_diretorios(args, parser)
+
+        elif args.command == 'contatos':
+
+            handle_contatos(args, parser)
             
 
 
