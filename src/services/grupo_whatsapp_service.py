@@ -52,7 +52,7 @@ class GrupoWhatsAppService(HistoricoMixin):
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
         
-        self.logger = get_logger("whatsapp")
+        self.logger = get_logger("grupo_whatsapp")
         
         # Cache em memória (chave: nome_normalizado, valor: JID)
         self._cache_nome_jid: Dict[str, str] = {}
@@ -192,12 +192,14 @@ class GrupoWhatsAppService(HistoricoMixin):
             return None
         
         try:
+            # Validar e sanitizar nome do grupo
+            if not dados.get("nome") or not dados["nome"].strip():
+                dados["nome"] = dados.get("jid", "Sem nome")
+                self.logger.warning(f"Nome do grupo vazio, usando fallback: {dados['nome']}")
+            
             # Criar modelo para validação
             grupo = GrupoWhatsAppMongoDB(**dados)
             doc = grupo.model_dump()
-            
-            # Remover criado_em do $set para usar em $setOnInsert
-            criado_em = doc.pop("criado_em", None)
             
             # Upsert por JID
             resultado = self.colecao.update_one(
@@ -237,8 +239,7 @@ class GrupoWhatsAppService(HistoricoMixin):
             return None
         
         try:
-            with self.logger.performance("buscar_por_jid"):
-                return self.colecao.find_one({"jid": jid})
+            return self.colecao.find_one({"jid": jid})
         except Exception as e:
             logger.error(f"Erro ao buscar grupo por JID: {e}")
             return None
@@ -262,12 +263,11 @@ class GrupoWhatsAppService(HistoricoMixin):
             nome_norm = self.normalizar_texto(nome)
 
             # Busca exata primeiro - filtrar por device_id
-            with self.logger.performance("buscar_por_nome_exato"):
-                grupo = self.colecao.find_one({
-                    "nome_normalizado": nome_norm,
-                    "whatsapp_device_id": device_id,
-                    "status": StatusGrupo.ATIVO.value
-                })
+            grupo = self.colecao.find_one({
+                "nome_normalizado": nome_norm,
+                "whatsapp_device_id": device_id,
+                "status": StatusGrupo.ATIVO.value
+            })
 
             if grupo:
                 return grupo
@@ -275,11 +275,10 @@ class GrupoWhatsAppService(HistoricoMixin):
             # Busca parcial se habilitado
             if match_parcial:
                 # Buscar grupos que contenham o nome ou vice-versa (filtrado por device)
-                with self.logger.performance("buscar_por_nome_parcial"):
-                    grupos = list(self.colecao.find({
-                        "whatsapp_device_id": device_id,
-                        "status": StatusGrupo.ATIVO.value
-                    }))
+                grupos = list(self.colecao.find({
+                    "whatsapp_device_id": device_id,
+                    "status": StatusGrupo.ATIVO.value
+                }))
 
                 for g in grupos:
                     g_nome_norm = g.get("nome_normalizado", "")
@@ -362,8 +361,7 @@ class GrupoWhatsAppService(HistoricoMixin):
             if device_id:
                 filtro["whatsapp_device_id"] = device_id
 
-            with self.logger.performance("listar_todos"):
-                return list(self.colecao.find(filtro).sort("nome", 1))
+            return list(self.colecao.find(filtro).sort("nome", 1))
         except Exception as e:
             logger.error(f"Erro ao listar grupos: {e}")
             return []
@@ -378,8 +376,7 @@ class GrupoWhatsAppService(HistoricoMixin):
             if apenas_ativos:
                 filtro["status"] = StatusGrupo.ATIVO.value
             
-            with self.logger.performance("contar_grupos"):
-                return self.colecao.count_documents(filtro)
+            return self.colecao.count_documents(filtro)
         except Exception as e:
             logger.error(f"Erro ao contar grupos: {e}")
             return 0
@@ -497,6 +494,11 @@ class GrupoWhatsAppService(HistoricoMixin):
             return None
 
         try:
+            # Validar e sanitizar nome do grupo
+            if not dados.get("nome") or not dados["nome"].strip():
+                dados["nome"] = dados.get("jid", "Sem nome")
+                self.logger.warning(f"Nome do grupo vazio, usando fallback: {dados['nome']}")
+            
             # Criar modelo para validação
             grupo = GrupoWhatsAppMongoDB(**dados)
             doc = grupo.model_dump()

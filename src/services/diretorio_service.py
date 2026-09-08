@@ -67,6 +67,8 @@ class DiretorioService(HistoricoMixin):
         mongo_uri = mongo_uri or dotenv.get_key(caminho_dotenv(), "MONGO_URI")
         db_name = db_name or dotenv.get_key(caminho_dotenv(), "MONGO_DATABASE_NAME")
         
+        self.logger = get_logger("diretorio")
+        
         # Cache em memória para diretórios (chave: ObjectId string, valor: documento)
         self._cache_diretorios: Dict[str, Dict[str, Any]] = {}
         # Cache por contrato_id para busca rápida
