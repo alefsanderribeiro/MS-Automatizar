@@ -18,8 +18,10 @@ import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
 from src.utils.retry_utils import retry_com_log
-from src.utils.telefone_utils import normalizar_telefone, validar_telefone
+from src.utils.telefone_utils import normalizar_telefone
 from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("whatsapp")
 
 
 # Tentativa de importação de requests

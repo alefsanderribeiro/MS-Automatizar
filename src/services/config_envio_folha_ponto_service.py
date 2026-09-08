@@ -17,7 +17,9 @@ from datetime import datetime, timezone
 import dotenv
 
 from src.utils.dotenv_path import caminho_dotenv
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("config_envio")
 from src.models.config_envio_folha_ponto_models import (
     SimNaoEnum,
     OrigemConfigEnum,

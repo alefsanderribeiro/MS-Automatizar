@@ -14,10 +14,12 @@ from src.services.cache_service import cache_service
 from src.models.funcionario_models import StatusFuncionario, StatusCadastro
 from src.utils.logger_config_v2 import get_logger
 
+logger = get_logger("funcionario")
+
 
 try:
     from pymongo import ASCENDING
-    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError, DuplicateKeyError
+    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
     from bson import ObjectId
     MONGODB_DISPONIVEL = True
 except ImportError:

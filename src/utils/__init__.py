@@ -2,7 +2,10 @@
 Utilitários do projeto MS-Automatizar
 """
 
-from src.utils.logger_config import logger
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("utils")
+
 from src.utils.dotenv_path import caminho_dotenv
 from src.utils.env_validator import validar_ambiente
 
