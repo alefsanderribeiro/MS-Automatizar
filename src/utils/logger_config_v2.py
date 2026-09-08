@@ -53,6 +53,7 @@ import traceback
 import threading
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, Union, Callable
+from contextlib import contextmanager
 from functools import wraps
 from pathlib import Path
 import re
@@ -714,16 +715,9 @@ class PerformanceContext:
 class CorrelationContext:
     """Context manager para correlation IDs"""
     
-    def __init__(self, logger: Optional[SystemLogger] = None, operation: Optional[str] = None, label: Optional[str] = None):
-        """
-        Cria um contexto de correlation ID.
-
-        O nome canônico do parâmetro é ``operation``. ``label`` é aceito como
-        alias para manter compatibilidade com callers antigos; usar ``operation``
-        em código novo.
-        """
-        self.logger = logger if logger is not None else SystemLogger()
-        self.operation = operation if operation is not None else label
+    def __init__(self, logger: SystemLogger, operation: str):
+        self.logger = logger
+        self.operation = operation
         self.correlation_id = None
     
     def __enter__(self):
@@ -782,6 +776,9 @@ class ModuleLogger:
     
     def performance(self, operation: str):
         return self.system_logger.performance(operation, self.module)
+    
+    def correlation(self, operation: str):
+        return self.system_logger.correlation(operation)
     
     def get_performance_stats(self, operation: Optional[str] = None) -> Dict:
         """Retorna estatísticas de performance"""
