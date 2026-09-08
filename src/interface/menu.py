@@ -214,6 +214,12 @@ def _abrir_configuracoes() -> None:
 # MENUS PRINCIPAIS
 # ═══════════════════════════════════════════════════════════════
 
+def _abrir_contatos_envio() -> None:
+    """Abre o menu de Contatos de Envio de Folha de Ponto."""
+    from src.interface.interface_contatos_folha_ponto import InterfaceContatosFolhaPonto
+    InterfaceContatosFolhaPonto().executar()
+
+
 def menu_gerenciar_dados() -> None:
     """Submenu para gerenciamento de dados (Funcionários, Empresas, etc.)."""
     (
@@ -232,6 +238,7 @@ def menu_interface() -> None:
         MenuBuilder("MENU PRINCIPAL", ICONES["home"])
         .adicionar("Operações com Folha de Ponto", _abrir_folha_ponto, ICONES["folha_ponto"])
         .adicionar("Operações com Holerite", _abrir_holerite, ICONES["holerite"])
+        .adicionar("Contatos de Envio", _abrir_contatos_envio, ICONES["buscar"])
         .separador()
         .adicionar("Gerenciar Dados", menu_gerenciar_dados, ICONES["dados"])
         .adicionar("Configurações", _abrir_configuracoes, ICONES["config"])
