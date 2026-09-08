@@ -25,7 +25,7 @@ class ServiceBaseGemini(ABC):
         self.logger = get_logger("ia")
         self._api_key = dotenv.get_key(caminho_dotenv(), "KEY_API_GEMINI")
         self._sdk_disponivel = False
-        self._client = genai.Client(api_key=self._api_key) if self._api_key else None
+        self._client = genai.Client(api_key=self._api_key)
         self._model = None
         self._default_config_kwargs = kwargs  # Armazena os kwargs padrão
         self._configurado = self._configurar_sdk()
@@ -73,7 +73,7 @@ class ServiceBaseMistral(ABC):
     def __init__(self, **kwargs):
         self._api_key = dotenv.get_key(caminho_dotenv(), "KEY_API_MISTRAL")
         self._sdk_disponivel = False
-        self._client = Mistral(api_key=self._api_key) if self._api_key else None
+        self._client = Mistral(api_key=self._api_key)
         self._model = None
         self._configurado = self._configurar_sdk()
     

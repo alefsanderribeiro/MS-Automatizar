@@ -23,7 +23,6 @@ from src.utils.logger_config_v2 import get_logger
 
 logger = get_logger("env")
 
-
 class NivelVariavel(Enum):
     """Nível de importância da variável"""
     OBRIGATORIA = "obrigatória"
@@ -144,6 +143,8 @@ class AmbienteInvalidoError(Exception):
     """Exceção para ambiente inválido"""
     
     def __init__(self, mensagem: str, variaveis_faltando: List[str] = None):
+
+        self.logger = get_logger("validacao")
         self.mensagem = mensagem
         self.variaveis_faltando = variaveis_faltando or []
         super().__init__(mensagem)

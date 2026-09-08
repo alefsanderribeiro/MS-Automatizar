@@ -177,8 +177,7 @@ class FolhaDePontoService:
                 "mes_referencia": mes_referencia
             }
             
-            with self.logger.performance("buscar_folha_existente"):
-                documento = self.colecao.find_one(filtro)
+            documento = self.colecao.find_one(filtro)
             
             if documento:
                 logger.debug(
@@ -225,6 +224,7 @@ class FolhaDePontoService:
         
         try:
             from datetime import date, datetime
+            import json
             
             # Se receber uma instância Pydantic, converter para dict
             if hasattr(folha_mongodb, 'dict'):
@@ -297,8 +297,7 @@ class FolhaDePontoService:
                 "funcao": funcao_funcionario
             }
             
-            with self.logger.performance("salvar_ou_atualizar_buscar"):
-                folha_existente = self.colecao.find_one(filtro_unico)
+            folha_existente = self.colecao.find_one(filtro_unico)
             
             if folha_existente and not forcar_sobrescrita:
                 # Há uma folha existente com mesma lotação/função
@@ -421,13 +420,12 @@ class FolhaDePontoService:
                 except Exception:
                     filtro["funcionario_id"] = funcionario_id
 
-            with self.logger.performance("listar_por_funcionario"):
-                documentos = list(
-                    self.colecao.find(
-                        filtro,
-                        {"_id": 0}
-                    ).sort("mes_referencia", -1)
-                )
+            documentos = list(
+                self.colecao.find(
+                    filtro,
+                    {"_id": 0}
+                ).sort("mes_referencia", -1)
+            )
             
             logger.debug(f"✓ {len(documentos)} folhas encontradas para funcionário_id={funcionario_id}")
             return documentos
@@ -458,13 +456,12 @@ class FolhaDePontoService:
                 }
             }
             
-            with self.logger.performance("buscar_por_periodo"):
-                documentos = list(
-                    self.colecao.find(
-                        filtro,
-                        {"_id": 0}
-                    ).sort("mes_referencia", 1).sort("funcionario_id", 1)
-                )
+            documentos = list(
+                self.colecao.find(
+                    filtro,
+                    {"_id": 0}
+                ).sort("mes_referencia", 1).sort("funcionario_id", 1)
+            )
             
             logger.debug(
                 f"✓ {len(documentos)} folhas encontradas entre {data_inicio} e {data_fim}"
@@ -504,13 +501,12 @@ class FolhaDePontoService:
             elif isinstance(empresa, ObjectId):
                 filtro["empresa_id"] = empresa
 
-            with self.logger.performance("buscar_por_empresa"):
-                documentos = list(
-                    self.colecao.find(
-                        filtro,
-                        {"_id": 0}
-                    ).sort("mes_referencia", -1)
-                )
+            documentos = list(
+                self.colecao.find(
+                    filtro,
+                    {"_id": 0}
+                ).sort("mes_referencia", -1)
+            )
             
             logger.debug(f"✓ {len(documentos)} folhas encontradas para empresa={empresa}")
             return documentos
@@ -533,13 +529,12 @@ class FolhaDePontoService:
             return []
         
         try:
-            with self.logger.performance("buscar_por_status"):
-                documentos = list(
-                    self.colecao.find(
-                        {"status": status},
-                        {"_id": 0}
-                    ).sort("data_atualizacao", -1)
-                )
+            documentos = list(
+                self.colecao.find(
+                    {"status": status},
+                    {"_id": 0}
+                ).sort("data_atualizacao", -1)
+            )
             
             logger.debug(f"✓ {len(documentos)} folhas encontradas com status={status}")
             return documentos
@@ -562,8 +557,7 @@ class FolhaDePontoService:
             }
         
         try:
-            with self.logger.performance("obter_estatisticas"):
-                total_folhas = self.colecao.count_documents({})
+            total_folhas = self.colecao.count_documents({})
             
             # Contar por status
             pipeline_status = [
@@ -575,11 +569,10 @@ class FolhaDePontoService:
                 }
             ]
             
-            with self.logger.performance("obter_estatisticas_status"):
-                status_count = {
-                    doc['_id']: doc['count']
-                    for doc in self.colecao.aggregate(pipeline_status)
-                }
+            status_count = {
+                doc['_id']: doc['count']
+                for doc in self.colecao.aggregate(pipeline_status)
+            }
             
             # Contar por empresa
             pipeline_empresa = [
@@ -591,11 +584,10 @@ class FolhaDePontoService:
                 }
             ]
             
-            with self.logger.performance("obter_estatisticas_empresa"):
-                empresa_count = {
-                    doc['_id']: doc['count']
-                    for doc in self.colecao.aggregate(pipeline_empresa)
-                }
+            empresa_count = {
+                doc['_id']: doc['count']
+                for doc in self.colecao.aggregate(pipeline_empresa)
+            }
             
             stats = {
                 'status': 'OK' if self.disponivel else 'Erro',
@@ -684,17 +676,16 @@ class FolhaDePontoService:
             return {"dados": [], "total": 0, "skip": skip, "limit": limit, "paginas": 0, "pagina_atual": 0}
         
         try:
-            with self.logger.performance("listar_todos_contar"):
-                total = self.colecao.count_documents({})
+            # Contar total
+            total = self.colecao.count_documents({})
             
             # Buscar com paginação
-            with self.logger.performance("listar_todos_buscar"):
-                documentos = list(
-                    self.colecao.find({})
-                    .sort([("mes_referencia", -1), ("funcionario_id", 1)])
-                    .skip(skip)
-                    .limit(limit)
-                )
+            documentos = list(
+                self.colecao.find({})
+                .sort([("mes_referencia", -1), ("funcionario_id", 1)])
+                .skip(skip)
+                .limit(limit)
+            )
             
             # Calcular paginação
             paginas = (total + limit - 1) // limit if limit > 0 else 1
