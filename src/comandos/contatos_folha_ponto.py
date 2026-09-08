@@ -244,3 +244,60 @@ def _exibir_tabela(contatos, titulo):
         )
     
     console.print(table)
+
+
+# ==================== FUNÇÕES DE INTEGRAÇÃO COM main.py ====================
+
+def contatos_subcommands(subparsers):
+    """Adiciona subcomandos de contatos ao parser principal"""
+    contatos = subparsers.add_parser('contatos', help='Gerenciar contatos de envio de folha de ponto')
+    contatos_subs = contatos.add_subparsers(dest='contatos_command', help='Operações com contatos')
+
+    # Listar
+    contatos_list = contatos_subs.add_parser('list', help='Listar contatos')
+    contatos_list.add_argument('--empresa', help='Filtrar por empresa')
+    contatos_list.add_argument('--local', help='Filtrar por local/contrato/polo')
+    contatos_list.add_argument('--envio', choices=['email', 'whatsapp', 'grupo_whatsapp', 'impresso'],
+                               help='Filtrar por tipo de envio')
+    contatos_list.add_argument('--skip', type=int, default=0, help='Pular N registros')
+    contatos_list.add_argument('--limit', type=int, default=50, help='Limite de registros')
+
+    # Buscar
+    busca_parser = contatos_subs.add_parser('busca', help='Buscar contato')
+    busca_parser.add_argument('--nome', help='Buscar por nome')
+    busca_parser.add_argument('--email', help='Buscar por email')
+    busca_parser.add_argument('--telefone', help='Buscar por telefone')
+
+    # Estatísticas
+    contatos_subs.add_parser('stats', help='Exibir estatísticas')
+
+    # Contar
+    contar_parser = contatos_subs.add_parser('contar', help='Contar contatos')
+    contar_parser.add_argument('--empresa', help='Contar por empresa')
+    contar_parser.add_argument('--local', help='Contar por local')
+
+    # Interface interativa
+    contatos_subs.add_parser('interface', help='Abrir interface interativa')
+
+
+def handle_contatos(args, parser):
+    """Handler para o comando contatos"""
+    if not hasattr(args, 'contatos_command') or not args.contatos_command:
+        parser.parse_args(['contatos', '--help'])
+        return
+
+    # Verificar se MongoDB está disponível
+    if not contatos_folha_ponto_service.disponivel:
+        console.print("[red]Erro: MongoDB não está disponível[/red]")
+        return
+
+    if args.contatos_command == 'list':
+        cmd_listar(args)
+    elif args.contatos_command == 'busca':
+        cmd_buscar(args)
+    elif args.contatos_command == 'stats':
+        cmd_estatisticas()
+    elif args.contatos_command == 'contar':
+        cmd_contar(args)
+    elif args.contatos_command == 'interface':
+        cmd_interface()
