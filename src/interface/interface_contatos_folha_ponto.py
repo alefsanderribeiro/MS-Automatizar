@@ -4,6 +4,9 @@ Permite criar, listar, buscar, editar e excluir contatos
 Seguindo o padrão do projeto (MenuBuilder + functions + core/components)
 """
 
+import json
+import os
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from src.utils.logger_config_v2 import get_logger
 
@@ -70,6 +73,17 @@ def _criar_servico():
     return contatos_folha_ponto_service
 
 
+def _formatar_data(data) -> str:
+    """Formata data para exibição"""
+    if not data:
+        return "N/A"
+    if hasattr(data, 'strftime'):
+        return data.strftime("%d/%m/%Y %H:%M")
+    if isinstance(data, str):
+        return data[:19]
+    return str(data)[:19]
+
+
 def _obter_icone_envio(contato: Dict[str, Any]) -> str:
     """Retorna ícones de envio formatados para um contato"""
     envios = []
@@ -86,6 +100,8 @@ def _obter_icone_envio(contato: Dict[str, Any]) -> str:
 
 def _formatar_contato_linha(contato: Dict[str, Any]) -> List[str]:
     """Formata um contato como linha de tabela"""
+    cod = str(contato.get("funcionario_id", "-")) or "-"
+    cod = cod[:10] + ".." if len(cod) > 12 else cod
     nome = (contato.get("nome", "N/A")[:28] + "..") if len(contato.get("nome", "")) > 30 else contato.get("nome", "N/A")
     empresa = (contato.get("empresa", "")[:18] + "..") if len(contato.get("empresa", "")) > 20 else contato.get("empresa", "-")
     local = (contato.get("local_contrato_polo", "-")[:18] + "..") if len(contato.get("local_contrato_polo", "")) > 20 else contato.get("local_contrato_polo", "-")
@@ -93,7 +109,61 @@ def _formatar_contato_linha(contato: Dict[str, Any]) -> List[str]:
     telefone = contato.get("telefone", "-") or "-"
     grupo = (contato.get("grupo_whatsapp", "-")[:15] + "..") if len(contato.get("grupo_whatsapp", "")) > 17 else contato.get("grupo_whatsapp", "-")
     envios = _obter_icone_envio(contato)
-    return [str(contato.get("_id", ""))[:8], nome, empresa, local, email, telefone, grupo, envios]
+    return [cod, nome, empresa, local, email, telefone, grupo, envios]
+
+
+def _mostrar_detalhes_contato(contato: Dict[str, Any]) -> None:
+    """Exibe detalhes completos de um contato em painéis organizados por seções"""
+    exibir_cabecalho("DETALHES DO CONTATO", ICONES["funcionarios"])
+
+    # Seção 1: Identificação
+    identificacao = (
+        f"[bold]ID MongoDB:[/bold] {contato.get('_id', 'N/A')}\n"
+        f"[bold]Cod (Funcionario):[/bold] {contato.get('funcionario_id', 'N/A')}\n"
+        f"[bold]Nome:[/bold] {contato.get('nome', 'N/A')}\n"
+        f"[bold]Empresa:[/bold] {contato.get('empresa', 'Nao informada')}\n"
+        f"[bold]Local/Contrato/Polo:[/bold] {contato.get('local_contrato_polo', 'Nao informado')}"
+    )
+    exibir_painel(identificacao, titulo=f"{ICONES['funcionario']} IDENTIFICACAO", estilo_borda="blue")
+
+    # Seção 2: Contato
+    contato_secao = (
+        f"[bold]Email(s):[/bold] {contato.get('email', 'Nao informado') or 'Nao informado'}\n"
+        f"[bold]Telefone(s):[/bold] {contato.get('telefone', 'Nao informado') or 'Nao informado'}\n"
+        f"[bold]Grupo(s) WhatsApp:[/bold] {contato.get('grupo_whatsapp', 'Nao informado') or 'Nao informado'}"
+    )
+    exibir_painel(contato_secao, titulo=f"{ICONES['info']} CONTATO", estilo_borda="green")
+
+    # Seção 3: Envio
+    envio_flags = []
+    if contato.get("enviar_email"):
+        envio_flags.append(f"  {ICONES['email']} Email")
+    if contato.get("enviar_whatsapp"):
+        envio_flags.append(f"  {ICONES['whatsapp']} WhatsApp")
+    if contato.get("enviar_grupo_whatsapp"):
+        envio_flags.append("  👥 Grupo WhatsApp")
+    if contato.get("enviar_impresso"):
+        envio_flags.append("  📄 Impresso")
+    envio_texto = "\n".join(envio_flags) if envio_flags else "  Nenhum canal configurado"
+
+    envio_secao = (
+        f"[bold]Canais de Envio:[/bold]\n{envio_texto}"
+    )
+    exibir_painel(envio_secao, titulo=f"{ICONES['enviar']} ENVIO", estilo_borda="yellow")
+
+    # Seção 4: Localização / Diretórios
+    local_secao = (
+        f"[bold]Diretorio Geral:[/bold] {contato.get('diretorio_geral', 'Nao informado') or 'Nao informado'}\n"
+        f"[bold]Diretorio Especifico:[/bold] {contato.get('diretorio_especifico', 'Nao informado') or 'Nao informado'}"
+    )
+    exibir_painel(local_secao, titulo=f"{ICONES['diretorio']} DIRETORIOS", estilo_borda="cyan")
+
+    # Seção 5: Metadados
+    metadados = (
+        f"[bold]Criado em:[/bold] {_formatar_data(contato.get('criado_em'))}\n"
+        f"[bold]Atualizado em:[/bold] {_formatar_data(contato.get('atualizado_em'))}"
+    )
+    exibir_painel(metadados, titulo=f"{ICONES['calendario']} METADADOS", estilo_borda="magenta")
 
 
 def _mostrar_estatisticas_rapidas():
@@ -212,6 +282,110 @@ Periodo: {mes:02d}/{ano}
     pausar()
 
 
+def _exportar_contatos() -> None:
+    """Exporta todos os contatos para um arquivo JSON"""
+    servico = _criar_servico()
+    if not servico:
+        return
+
+    exibir_cabecalho("EXPORTAR CONTATOS", ICONES["salvar"])
+
+    total = servico.contar()
+    exibir_info(f"Total de contatos para exportar: {total}")
+
+    if total == 0:
+        exibir_aviso("Nenhum contato para exportar.")
+        pausar()
+        return
+
+    if not pedir_confirmacao(f"Exportar {total} contatos para JSON?"):
+        exibir_aviso("Operacao cancelada.")
+        pausar()
+        return
+
+    # Exportar
+    contatos = servico.listar_todos(skip=0, limit=total)
+
+    # Converter ObjectId para string em todos os contatos
+    dados_exportacao = []
+    for contato in contatos:
+        contato_convertido = {}
+        for key, value in contato.items():
+            if hasattr(value, 'isoformat'):
+                contato_convertido[key] = value.isoformat()
+            else:
+                contato_convertido[key] = value
+        dados_exportacao.append(contato_convertido)
+
+    # Criar diretorio de exports se nao existir
+    dir_export = os.path.join(os.path.dirname(__file__), "..", "..", "exports")
+    os.makedirs(dir_export, exist_ok=True)
+
+    # Nome do arquivo com timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_arquivo = f"contatos_folha_ponto_{timestamp}.json"
+    caminho_completo = os.path.join(dir_export, nome_arquivo)
+
+    try:
+        with open(caminho_completo, "w", encoding="utf-8") as f:
+            json.dump(dados_exportacao, f, ensure_ascii=False, indent=2, default=str)
+
+        exibir_sucesso(f"{len(dados_exportacao)} contatos exportados com sucesso!")
+        exibir_info(f"Arquivo: {caminho_completo}")
+        logger.audit("CONTATOS_EXPORTADOS_INTERFACE", target="export_json", changes={"total": len(dados_exportacao), "arquivo": caminho_completo})
+    except Exception as e:
+        exibir_erro(f"Erro ao exportar: {e}")
+        logger.error(f"Erro ao exportar contatos: {e}")
+
+    pausar()
+
+
+def _ver_detalhes_contato_menu() -> None:
+    """Wrapper para ver detalhes de contato a partir do menu principal"""
+    servico = _criar_servico()
+    if not servico:
+        return
+
+    exibir_cabecalho("VER DETALHES DO CONTATO", ICONES["buscar"])
+
+    # Buscar por nome
+    nome_busca = pedir_texto("Nome do contato para buscar:")
+    if not nome_busca:
+        return
+
+    contatos_encontrados = servico.buscar_por_nome(nome_busca)
+
+    if not contatos_encontrados:
+        exibir_info("Nenhum contato encontrado com esse nome.")
+        pausar()
+        return
+
+    # Se encontrou apenas um
+    if len(contatos_encontrados) == 1:
+        contato = contatos_encontrados[0]
+    else:
+        # Multiplos - permitir escolher
+        exibir_info(f"{len(contatos_encontrados)} contato(s) encontrado(s)")
+
+        dados = [_formatar_contato_linha(c) for c in contatos_encontrados]
+        exibir_tabela(
+            "Contatos Encontrados",
+            ["Cod", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
+            dados,
+        )
+
+        escolha = pedir_inteiro("Escolha o numero do contato (0 para cancelar):", minimo=0, maximo=len(contatos_encontrados))
+
+        if escolha is None or escolha == 0:
+            exibir_aviso("Operacao cancelada.")
+            return
+
+        contato = contatos_encontrados[escolha - 1]
+
+    _mostrar_detalhes_contato(contato)
+    pausar()
+
+
 # ═══════════════════════════════════════════════════════════════
 # INTERFACE PRINCIPAL
 # ═══════════════════════════════════════════════════════════════
@@ -228,12 +402,14 @@ def Interface_Contatos_Folha_Ponto():
     (
         MenuBuilder("GERENCIAR CONTATOS DE ENVIO DE FOLHA DE PONTO", ICONES["funcionarios"])
         .adicionar("Listar contatos", _listar_contatos, ICONES["listar"])
+        .adicionar("Ver detalhes do contato", _ver_detalhes_contato_menu, ICONES["buscar"])
         .adicionar("Visualizar documentos por contato", _visualizar_documentos_contato, ICONES["buscar"])
         .adicionar("Buscar contato", _buscar_contato, ICONES["buscar"])
         .adicionar("Adicionar novo contato", _adicionar_contato, ICONES["criar"])
         .adicionar("Editar contato existente", _editar_contato, ICONES["editar"])
         .adicionar("Excluir contato", _excluir_contato, ICONES["excluir"])
         .separador()
+        .adicionar("Exportar contatos", _exportar_contatos, ICONES["salvar"])
         .adicionar("Estatisticas", _exibir_estatisticas, ICONES["estatistica"])
         .com_voltar("Voltar ao Menu Principal")
         .executar()
@@ -257,6 +433,7 @@ def _listar_contatos():
     # Opções de filtro
     filtro_opcoes = [
         "Todos",
+        "Filtrar por nome",
         "Filtrar por empresa",
         "Filtrar por local",
         "Filtrar por tipo de envio",
@@ -282,6 +459,16 @@ def _listar_contatos():
         _estado_paginacao["filtro_tipo"] = None
         contatos = servico.listar_todos(skip=0, limit=itens_por_pagina)
         _estado_paginacao["total"] = servico.contar()
+    elif filtro == "Filtrar por nome":
+        nome = pedir_texto("Nome do contato (busca parcial):")
+        if not nome:
+            exibir_aviso("Operacao cancelada.")
+            return
+        _estado_paginacao["filtro_termo"] = nome
+        _estado_paginacao["filtro_tipo"] = None
+        todos_encontrados = servico.buscar_por_nome(nome)
+        _estado_paginacao["total"] = len(todos_encontrados)
+        contatos = todos_encontrados[:itens_por_pagina]
     elif filtro == "Filtrar por empresa":
         empresa = pedir_texto("Nome da empresa:")
         if not empresa:
@@ -339,7 +526,7 @@ def _exibir_pagina_contatos():
 
     exibir_tabela(
         f"Contatos (Pagina {pagina}/{paginas} - Total: {total})",
-        ["ID", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
+        ["Cod", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
         dados,
     )
 
@@ -381,6 +568,13 @@ def _carregar_pagina_atual():
 
     if filtro == "Todos":
         contatos = servico.listar_todos(skip=skip, limit=itens_por_pagina)
+    elif filtro == "Filtrar por nome":
+        termo = _estado_paginacao.get("filtro_termo")
+        if termo:
+            todos_encontrados = servico.buscar_por_nome(termo)
+            contatos = todos_encontrados[skip:skip + itens_por_pagina]
+        else:
+            contatos = servico.listar_todos(skip=skip, limit=itens_por_pagina)
     elif filtro == "Filtrar por empresa":
         termo = _estado_paginacao.get("filtro_termo")
         contatos = servico.listar_por_empresa(termo, skip=skip, limit=itens_por_pagina) if termo else servico.listar_todos(skip=skip, limit=itens_por_pagina)
@@ -442,7 +636,7 @@ def _buscar_contato():
 
     exibir_tabela(
         f"Resultados da busca por {tipo_busca} ({len(contatos)} encontrado(s))",
-        ["ID", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
+        ["Cod", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
         dados,
     )
 
@@ -589,7 +783,7 @@ def _editar_contato():
         dados = [_formatar_contato_linha(c) for c in contatos_encontrados]
         exibir_tabela(
             "Contatos Encontrados",
-            ["ID", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
+            ["Cod", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
             dados,
         )
 
@@ -714,7 +908,7 @@ def _excluir_contato():
         dados = [_formatar_contato_linha(c) for c in contatos_encontrados]
         exibir_tabela(
             "Contatos Encontrados",
-            ["ID", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
+            ["Cod", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
             dados,
         )
 
