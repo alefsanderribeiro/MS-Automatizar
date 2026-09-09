@@ -203,8 +203,8 @@ def cmd_contar(args):
 
 def cmd_interface():
     """Abre interface interativa"""
-    from src.interface.interface_contatos_folha_ponto import InterfaceContatosFolhaPonto
-    InterfaceContatosFolhaPonto()
+    from src.interface.interface_contatos_folha_ponto import Interface_Contatos_Folha_Ponto
+    Interface_Contatos_Folha_Ponto()
 
 
 def _exibir_tabela(contatos, titulo):

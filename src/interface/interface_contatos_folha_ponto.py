@@ -103,6 +103,10 @@ def _mostrar_estatisticas_rapidas():
 
 def _visualizar_documentos_contato():
     """Visualiza quais documentos (PDFs) serao enviados para um contato"""
+    servico = _criar_servico()
+    if servico is None:
+        return
+
     exibir_cabecalho("Visualizar Documentos por Contato")
 
     # Pedir mes/ano de referencia
@@ -117,7 +121,7 @@ def _visualizar_documentos_contato():
     exibir_info(f"Periodo: {mes:02d}/{ano}")
 
     # Listar contatos com envio ativo
-    contatos = contatos_folha_ponto_service.listar_todos()
+    contatos = servico.listar_todos()
     contatos_com_envio = [c for c in contatos if any([
         c.get("enviar_email"),
         c.get("enviar_whatsapp"),
@@ -179,13 +183,15 @@ def _visualizar_documentos_contato():
     if contato.get("enviar_whatsapp"): envios.append(f"💬 WhatsApp: {contato.get('telefone', '-')}")
     if contato.get("enviar_grupo_whatsapp"): envios.append(f"👥 Grupo: {contato.get('grupo_whatsapp', '-')}")
 
+    envios_str = "\n".join(envios) if envios else "Nenhum"
+
     conteudo = f"""[bold]{nome}[/bold]
 Empresa: {empresa}
 Local: {local}
 Periodo: {mes:02d}/{ano}
 
 [bold]Canais de envio:[/bold]
-{'chr(10)'.join(envios) if envios else 'Nenhum'}
+{envios_str}
 
 [bold]Diretorio:[/bold]
 {diretorio_completo}
