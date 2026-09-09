@@ -120,6 +120,34 @@ def contatos_subcommands(subparsers):
     Adiciona subcomandos para gerenciar contatos de envio de folha de ponto.
     """
     contatos = subparsers.add_parser('contatos', help='Gerenciar contatos de envio de folha de ponto')
+    contatos_subs = contatos.add_subparsers(dest='contatos_command', help='Operações com contatos')
+
+    # Listar
+    contatos_list = contatos_subs.add_parser('list', help='Listar contatos')
+    contatos_list.add_argument('--empresa', help='Filtrar por empresa')
+    contatos_list.add_argument('--local', help='Filtrar por local/contrato/polo')
+    contatos_list.add_argument('--envio', choices=['email', 'whatsapp', 'grupo_whatsapp', 'impresso'],
+                               help='Filtrar por tipo de envio')
+    contatos_list.add_argument('--skip', type=int, default=0, help='Pular N registros')
+    contatos_list.add_argument('--limit', type=int, default=50, help='Limite de registros')
+
+    # Buscar
+    busca_parser = contatos_subs.add_parser('busca', help='Buscar contato')
+    busca_parser.add_argument('--nome', help='Buscar por nome')
+    busca_parser.add_argument('--email', help='Buscar por email')
+    busca_parser.add_argument('--telefone', help='Buscar por telefone')
+    busca_parser.add_argument('--funcionario-id', help='Buscar por ID do funcionário')
+
+    # Estatísticas
+    contatos_subs.add_parser('stats', help='Exibir estatísticas')
+
+    # Contar
+    contar_parser = contatos_subs.add_parser('contar', help='Contar contatos')
+    contar_parser.add_argument('--empresa', help='Contar por empresa')
+    contar_parser.add_argument('--local', help='Contar por local')
+
+    # Interface interativa
+    contatos_subs.add_parser('interface', help='Abrir interface interativa')
 
 
 def diretorios_subcommands(subparsers):

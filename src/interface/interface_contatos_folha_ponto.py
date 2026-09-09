@@ -47,6 +47,8 @@ _estado_paginacao = {
     "contatos": [],
     "total": 0,
     "filtro_atual": None,
+    "filtro_termo": None,
+    "filtro_tipo": None,
 }
 
 
@@ -274,6 +276,8 @@ def _listar_contatos():
     contatos = []
 
     if filtro == "Todos":
+        _estado_paginacao["filtro_termo"] = None
+        _estado_paginacao["filtro_tipo"] = None
         contatos = servico.listar_todos(skip=0, limit=itens_por_pagina)
         _estado_paginacao["total"] = servico.contar()
     elif filtro == "Filtrar por empresa":
@@ -281,6 +285,8 @@ def _listar_contatos():
         if not empresa:
             exibir_aviso("Operacao cancelada.")
             return
+        _estado_paginacao["filtro_termo"] = empresa
+        _estado_paginacao["filtro_tipo"] = None
         contatos = servico.listar_por_empresa(empresa, skip=0, limit=itens_por_pagina)
         _estado_paginacao["total"] = servico.contar_por_empresa(empresa)
     elif filtro == "Filtrar por local":
@@ -288,6 +294,8 @@ def _listar_contatos():
         if not local:
             exibir_aviso("Operacao cancelada.")
             return
+        _estado_paginacao["filtro_termo"] = local
+        _estado_paginacao["filtro_tipo"] = None
         contatos = servico.listar_por_local(local, skip=0, limit=itens_por_pagina)
         _estado_paginacao["total"] = servico.contar_por_local(local)
     elif filtro == "Filtrar por tipo de envio":
@@ -298,6 +306,8 @@ def _listar_contatos():
         if not tipo_envio:
             exibir_aviso("Operacao cancelada.")
             return
+        _estado_paginacao["filtro_termo"] = None
+        _estado_paginacao["filtro_tipo"] = tipo_envio
         contatos = servico.listar_por_envio(tipo_envio, skip=0, limit=itens_por_pagina)
         _estado_paginacao["total"] = servico.contar()
 
@@ -370,12 +380,14 @@ def _carregar_pagina_atual():
     if filtro == "Todos":
         contatos = servico.listar_todos(skip=skip, limit=itens_por_pagina)
     elif filtro == "Filtrar por empresa":
-        # Reutilizar termo do filtro (simplificado)
-        contatos = servico.listar_todos(skip=skip, limit=itens_por_pagina)
+        termo = _estado_paginacao.get("filtro_termo")
+        contatos = servico.listar_por_empresa(termo, skip=skip, limit=itens_por_pagina) if termo else servico.listar_todos(skip=skip, limit=itens_por_pagina)
     elif filtro == "Filtrar por local":
-        contatos = servico.listar_todos(skip=skip, limit=itens_por_pagina)
+        termo = _estado_paginacao.get("filtro_termo")
+        contatos = servico.listar_por_local(termo, skip=skip, limit=itens_por_pagina) if termo else servico.listar_todos(skip=skip, limit=itens_por_pagina)
     elif filtro == "Filtrar por tipo de envio":
-        contatos = servico.listar_todos(skip=skip, limit=itens_por_pagina)
+        tipo = _estado_paginacao.get("filtro_tipo")
+        contatos = servico.listar_por_envio(tipo, skip=skip, limit=itens_por_pagina) if tipo else servico.listar_todos(skip=skip, limit=itens_por_pagina)
 
     _estado_paginacao["contatos"] = contatos
 
