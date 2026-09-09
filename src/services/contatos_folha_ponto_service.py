@@ -104,6 +104,11 @@ class ContatosFolhaPontoService:
         """Cria índices na coleção para melhor performance"""
         try:
             # Índice único por funcionario_id (sparse para permitir nulos)
+            # Dropar índice antigo se existir para evitar conflito
+            try:
+                self.colecao.drop_index("funcionario_id_1")
+            except Exception:
+                pass
             self.colecao.create_index(
                 [("funcionario_id", ASCENDING)],
                 unique=True,

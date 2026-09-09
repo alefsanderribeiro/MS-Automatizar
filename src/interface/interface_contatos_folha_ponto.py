@@ -87,11 +87,13 @@ def _obter_icone_envio(contato: Dict[str, Any]) -> str:
 def _formatar_contato_linha(contato: Dict[str, Any]) -> List[str]:
     """Formata um contato como linha de tabela"""
     nome = (contato.get("nome", "N/A")[:28] + "..") if len(contato.get("nome", "")) > 30 else contato.get("nome", "N/A")
-    empresa = (contato.get("empresa", "")[:20] + "..") if len(contato.get("empresa", "")) > 22 else contato.get("empresa", "-")
-    email = (contato.get("email", "")[:25] + "..") if len(contato.get("email", "")) > 27 else contato.get("email", "-")
+    empresa = (contato.get("empresa", "")[:18] + "..") if len(contato.get("empresa", "")) > 20 else contato.get("empresa", "-")
+    local = (contato.get("local_contrato_polo", "-")[:18] + "..") if len(contato.get("local_contrato_polo", "")) > 20 else contato.get("local_contrato_polo", "-")
+    email = (contato.get("email", "")[:22] + "..") if len(contato.get("email", "")) > 24 else contato.get("email", "-")
     telefone = contato.get("telefone", "-") or "-"
+    grupo = (contato.get("grupo_whatsapp", "-")[:15] + "..") if len(contato.get("grupo_whatsapp", "")) > 17 else contato.get("grupo_whatsapp", "-")
     envios = _obter_icone_envio(contato)
-    return [str(contato.get("_id", ""))[:8], nome, empresa, email, telefone, envios]
+    return [str(contato.get("_id", ""))[:8], nome, empresa, local, email, telefone, grupo, envios]
 
 
 def _mostrar_estatisticas_rapidas():
@@ -337,7 +339,7 @@ def _exibir_pagina_contatos():
 
     exibir_tabela(
         f"Contatos (Pagina {pagina}/{paginas} - Total: {total})",
-        ["ID", "Nome", "Empresa", "Email", "Telefone", "Envios"],
+        ["ID", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
         dados,
     )
 
@@ -440,7 +442,7 @@ def _buscar_contato():
 
     exibir_tabela(
         f"Resultados da busca por {tipo_busca} ({len(contatos)} encontrado(s))",
-        ["ID", "Nome", "Empresa", "Email", "Telefone", "Envios"],
+        ["ID", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
         dados,
     )
 
@@ -587,7 +589,7 @@ def _editar_contato():
         dados = [_formatar_contato_linha(c) for c in contatos_encontrados]
         exibir_tabela(
             "Contatos Encontrados",
-            ["ID", "Nome", "Empresa", "Email", "Telefone", "Envios"],
+            ["ID", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
             dados,
         )
 
@@ -712,7 +714,7 @@ def _excluir_contato():
         dados = [_formatar_contato_linha(c) for c in contatos_encontrados]
         exibir_tabela(
             "Contatos Encontrados",
-            ["ID", "Nome", "Empresa", "Email", "Telefone", "Envios"],
+            ["ID", "Nome", "Empresa", "Local", "Email", "Telefone", "Grupo", "Envios"],
             dados,
         )
 
