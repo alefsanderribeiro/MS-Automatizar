@@ -130,23 +130,19 @@ def _visualizar_documentos_contato():
         return
 
     # Mostrar lista resumida
-    table = exibir_tabela("Contatos com Envio Ativo")
-    table.add_column("#", style="dim")
-    table.add_column("Nome")
-    table.add_column("Local")
-    table.add_column("Envios")
-
+    colunas = ["#", "Nome", "Local", "Empresa", "Envios"]
+    dados = []
     for i, c in enumerate(contatos_com_envio, 1):
         nome = c.get("nome", "(sem nome)") or "(sem nome)"
         local = c.get("local_contrato_polo", "-")[:30]
+        empresa = c.get("empresa", "-")[:15]
         envios = []
-        if c.get("enviar_email"): envios.append("📧")
-        if c.get("enviar_whatsapp"): envios.append("💬")
-        if c.get("enviar_grupo_whatsapp"): envios.append("👥")
-        table.add_row(str(i), nome, local, " ".join(envios))
+        if c.get("enviar_email"): envios.append("email")
+        if c.get("enviar_whatsapp"): envios.append("whatsapp")
+        if c.get("enviar_grupo_whatsapp"): envios.append("grupo")
+        dados.append([str(i), nome, local, empresa, ", ".join(envios)])
 
-    console.print(table)
-    console.print()
+    exibir_tabela("Contatos com Envio Ativo", colunas, dados)
 
     # Pedir selecao
     opcao = pedir_inteiro("Selecione o numero do contato (0 para voltar)", minimo=0, maximo=len(contatos_com_envio))
