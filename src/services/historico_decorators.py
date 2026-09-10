@@ -22,6 +22,10 @@ logger = get_logger("historico")
 from functools import wraps
 from typing import Optional, Dict, Any, List, Callable
 from datetime import datetime, timezone
+from src.utils.logger_config_v2 import get_logger
+
+logger = get_logger("historico")
+
 
 def registrar_historico(
     campos_rastrear: Optional[List[str]] = None,
