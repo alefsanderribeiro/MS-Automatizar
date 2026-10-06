@@ -70,7 +70,7 @@ O sistema abrange tres grandes fluxos:
 │  whatsapp_service.py       (API WA)          │
 │  zoho_mail_service.py      (API Zoho)        │
 │  planilha_contatos_service (planilha Excel)  │
-│  analise_ai_service.py     (Gemini/Mistral)   │
+│  analise_ai_service.py  (OpenCode/Gemini/Mistral) │
 │  cache_service.py          (Redis+memoria)    │
 │  mongodb_connection.py     (pool central)    │
 │  mongodb_utils.py          (helpers)         │
@@ -447,6 +447,7 @@ CRUD de empresas, com suporte a autocadastro de empresas incompletas.
 
 - **MongoDBConnectionPool** (`mongodb_connection.py` — 463 linhas): Singleton thread-safe com double-checked locking
 - **CacheService** (`cache_service.py` — 429 linhas): Redis + fallback em memoria, TTL configuravel
+- **OpenCodeService** (`analise_ai_service.py`): OpenCode Go/Zen (visao), modelo `mimo-v2.5` — disponivel para extracao; a Folha de Ponto ainda usa Gemini diretamente
 - **GeminiService** (`analise_ai_service.py` — 647 linhas): Google Gemini 2.5 Pro, Structured Output, File API para >20MB
 - **MistralService** (`analise_ai_service.py`): Mistral OCR (mistral-ocr-2505) + chat (mistral-small-2506)
 
@@ -618,7 +619,7 @@ SISTEMA DE ENVIO DE FOLHAS DE PONTO
 - **Metodo:** `documento_estruturado()` com Structured Output (Pydantic schema)
 - **Retry:** 3 tentativas com temperature 0.2 → 0.4 → 0.6
 - **File API:** Para arquivos > 20MB
-- **Chave:** `.env` → `GEMINI_API_KEY`
+- **Chave:** `.env` → `KEY_API_GEMINI`
 
 ### 8.2 WhatsApp (go-whatsapp-web-multidevice)
 - **API REST:** Docker na porta 3000
@@ -805,8 +806,12 @@ Em `tests/conftest.py` e `tests/fixtures/`:
 MONGO_URI=mongodb+srv://...
 MONGO_DATABASE_NAME=MS_Automatizar
 
-# IA
-GEMINI_API_KEY=...
+# IA (OpenCode disponivel; Folha de Ponto usa Gemini)
+KEY_API_OPENCODE=...
+OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1
+OPENCODE_MODEL_OCR=mimo-v2.5
+OPENCODE_MODEL_AI=mimo-v2.5
+KEY_API_GEMINI=...
 KEY_API_MISTRAL=...
 
 # WhatsApp

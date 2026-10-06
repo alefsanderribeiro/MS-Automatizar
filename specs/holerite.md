@@ -6,7 +6,7 @@ O dominio Holerite automatiza o processamento e envio de recibos de pagamento (h
 
 Duas grandes responsabilidades:
 
-1. **Processamento de PDFs**: Renomeacao automatica de arquivos PDF por nome do funcionario (via OCR Mistral ou IA Gemini), extracao completa de dados estruturados com Gemini 2.5 Pro (vencimentos, descontos, bases de calculo) e armazenamento em MongoDB com vinculacao a funcionarios e empresas.
+1. **Processamento de PDFs**: Renomeacao automatica de arquivos PDF por nome do funcionario (via IA com **cadeia de fallback**: OpenCode Go → Gemini → Mistral), extracao completa de dados estruturados com IA (schema validado, vencimentos, descontos, bases de calculo) e armazenamento em MongoDB com vinculacao a funcionarios e empresas.
 
 2. **Envio automatizado**: Distribuicao dos holerites processados via Email (Zoho Mail OAuth2) e WhatsApp (individual e grupos, com suporte a multiplos dispositivos). Dois modos: via planilha Excel de contatos ou via dados diretamente do MongoDB.
 
@@ -40,8 +40,8 @@ O dominio tambem inclui um sistema de cache OCR baseado em hash SHA256 no MongoD
 │                                                                  │
 │  HoleriteService    CacheOCRMongoDB   FuncionarioService         │
 │  EmpresaService     ContatoFuncionarioService                    │
-│  GeminiService      MistralService    WhatsAppService            │
-│  ZohoMailService    PlanilhaHoleritesService                     │
+│  OpenCodeService    GeminiService     MistralService             │
+│  WhatsAppService    ZohoMailService   PlanilhaHoleritesService    │
 │  TemplateMensagemService  GrupoWhatsAppService                   │
 └──────────────────────┬───────────────────────────────────────────┘
                        │
@@ -68,6 +68,13 @@ PDF Original ──► PdfProcessorService.extrair_cabecalho()
               └─────┬─────┘
                     │         │
                     │         ▼
+                    │    NomeExtractorOpenCode.imagem() (OpenCode Go, padrão)
+                    │         │
+                    │    ┌────┴─────┐
+                    │    │  Falha   │ OK
+                    │    └────┬─────┘
+                    │         │    │
+                    │         ▼    ▼
                     │    NomeExtractorOCR.imagem() (Mistral)
                     │         │
                     │    ┌────┴─────┐
@@ -147,7 +154,7 @@ MODO MONGODB:
 
 ## 3. Modelos de Dados
 
-### 3.1 HoleriteExtracaoSchema (schema para Gemini)
+### 3.1 HoleriteExtracaoSchema (schema para IA)
 
 ```python
 class HoleriteExtracaoSchema(BaseModel):
@@ -367,7 +374,24 @@ Cache de OCR com hash SHA256, armazenado em MongoDB (colecao `cache_ocr`).
 
 **Singleton global:** `cache_ocr`
 
-### 4.3 GeminiService (647+ linhas em analise_ai_service.py)
+### 4.3 OpenCodeService (em analise_ai_service.py)
+
+Classe `OpenCodeService(ServiceBaseOpenCode)` — API OpenAI-compatible do OpenCode **Go/Zen** com visão.
+
+**Metodos usados pelo dominio Holerite:**
+
+| Metodo | Uso no Holerite |
+|--------|-----------------|
+| `documento_estruturado(documento, prompt, schema_pydantic)` | Extracao de holerites (PDF → imagens via pypdfium2 → modelo de visão) |
+| `imagem(imagem, prompt)` | Extracao de nome do cabecalho (usado em NomeExtractorOpenCode) |
+
+**Caracteristicas:**
+- Modelo padrao `mimo-v2.5` (config via `OPENCODE_MODEL_OCR` / `OPENCODE_MODEL_AI`)
+- Extracao estruturada: JSON Schema enviado no prompt; resposta normalizada por `json_utils.extrair_json()`
+- Headers exigidos pelo Go: `x-opencode-session` e User-Agent de agente
+- Autenticacao: `Authorization: Bearer KEY_API_OPENCODE`
+
+### 4.4 GeminiService (647+ linhas em analise_ai_service.py)
 
 Classe `GeminiService(ServiceBaseGemini)` com modelo padrao `gemini-2.5-pro`.
 
@@ -383,7 +407,7 @@ Classe `GeminiService(ServiceBaseGemini)` com modelo padrao `gemini-2.5-pro`.
 - Schema cleaning: resolve `$defs`, remove campos nao suportados pelo Gemini
 - File API automatica para documentos >20MB (upload temporario, cleanup apos 48h)
 
-### 4.4 MistralService (647+ linhas em analise_ai_service.py)
+### 4.5 MistralService (647+ linhas em analise_ai_service.py)
 
 **Metodos usados pelo dominio Holerite:**
 
@@ -393,7 +417,7 @@ Classe `GeminiService(ServiceBaseGemini)` com modelo padrao `gemini-2.5-pro`.
 
 Modelo OCR: `mistral-ocr-2512`, modelo chat: `mistral-small-2506`.
 
-### 4.5 ContatoFuncionarioService (799 linhas)
+### 4.6 ContatoFuncionarioService (799 linhas)
 
 Gerencia contatos de funcionarios. Usado para criar/atualizar contatos apos extracao de holerite.
 
@@ -407,7 +431,7 @@ Gerencia contatos de funcionarios. Usado para criar/atualizar contatos apos extr
 
 **Indices MongoDB:** indices unicos e compostos para busca rapida.
 
-### 4.6 PlanilhaHoleritesService (491 linhas)
+### 4.7 PlanilhaHoleritesService (491 linhas)
 
 Le planilha Excel de contatos de holerites.
 
@@ -429,7 +453,7 @@ Le planilha Excel de contatos de holerites.
 
 **Singleton global:** `planilha_holerites_service`
 
-### 4.7 Demais Servicos
+### 4.8 Demais Servicos
 
 | Servico | Uso no Holerite |
 |---------|-----------------|
@@ -471,7 +495,7 @@ class ResultadoProcessamentoHolerite:
 
 | Metodo | Descricao |
 |--------|-----------|
-| `processar_arquivo(arquivo, empresa_id, temperatura, max_tentativas)` | Processa um PDF: validacao, extracao Gemini, vinculacao funcionario/empresa, salvamento, contatos |
+| `processar_arquivo(arquivo, empresa_id, temperatura, max_tentativas)` | Processa um PDF: validacao, extracao IA (cadeia de fallback), vinculacao funcionario/empresa, salvamento, contatos |
 | `processar_diretorio(diretorio, empresa_id, recursivo, temperatura)` | Processa todos PDFs "Recibo de Pagamento" de um diretorio |
 | `calcular_hash_arquivo(caminho)` | SHA256 do arquivo |
 | `obter_estatisticas()` | Contadores de processamento |
@@ -672,9 +696,10 @@ SISTEMA DE ENVIO DE HOLERITES
 
 | Integracao | Tecnologia | Uso no Holerite |
 |------------|-----------|-----------------|
-| Google Gemini AI | `gemini-2.5-pro` | Extracao estruturada de holerites (HoleriteExtracaoSchema) |
+| OpenCode Go/Zen | `mimo-v2.5` (visao) | Provedor principal: extracao estruturada e nome do cabecalho |
+| Google Gemini AI | `gemini-2.5-pro` | Extracao estruturada de holerites (fallback; HoleriteExtracaoSchema) |
 | Gemini Flash Lite | `gemini-2.5-flash-lite` | Extracao de nome do cabecalho (fallback) |
-| Mistral AI OCR | `mistral-ocr-2512` | OCR primario de cabecalhos de holerites |
+| Mistral AI OCR | `mistral-ocr-2512` | OCR de cabecalhos de holerites (fallback) |
 | WhatsApp API | `go-whatsapp-web-multidevice` (Docker, porta 3000) | Envio de holerites para individuos e grupos |
 | Zoho Mail API | OAuth2 (Self Client) | Envio de holerites por email |
 | MongoDB | Atlas / local (pymongo) | Persistencia: holerites, contatos, cache OCR, empresas, funcionarios |
@@ -689,10 +714,11 @@ SISTEMA DE ENVIO DE HOLERITES
 1. **Filtragem de arquivos**: apenas PDFs com prefixo "Recibo de Pagamento"
 2. **Calculo de hash**: SHA256 do arquivo completo (lido em chunks de 8KB)
 3. **Dedup**: consulta `holerite_service.buscar_por_hash()` → se existe, retorna sem reprocessar
-4. **Extracao Gemini**: `gemini.documento_estruturado()` com `HoleriteExtracaoSchema`
+4. **Extracao IA (cadeia de fallback)**: `servico.documento_estruturado()` com `HoleriteExtracaoSchema`
+   - Ordem: `IA_EXTRATORES` (padrao `opencode,gemini,mistral`); cada provedor tenta ate 2 vezes antes do proximo
    - Prompt: `PROMPT_EXTRACAO` com instrucoes detalhadas
    - Temperatura: 0.1 (configuravel)
-   - Max tentativas: 2
+   - Max tentativas: 2 por provedor
    - Retry em resposta curta (<50 caracteres)
 5. **Validacao**: `HoleriteExtracaoSchema.model_validate_json()` (Pydantic, `extra = "forbid"`)
 6. **Lookup funcionario**: `funcionario_service.criar_ou_buscar_por_documento(cpf, nome)`
@@ -920,7 +946,12 @@ NomeExtractorIA.extrair_nome(imagem)
 MONGO_URI=mongodb+srv://...
 MONGO_DATABASE_NAME=MS_Automatizar
 
-# IA
+# IA (cadeia de fallback: opencode -> gemini -> mistral)
+KEY_API_OPENCODE=...
+OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1
+OPENCODE_MODEL_OCR=mimo-v2.5
+OPENCODE_MODEL_AI=mimo-v2.5
+IA_EXTRATORES=opencode,gemini,mistral
 KEY_API_GEMINI=...
 KEY_API_MISTRAL=...
 
