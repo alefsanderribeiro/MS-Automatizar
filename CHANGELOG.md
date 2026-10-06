@@ -5,6 +5,25 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [Não publicado]
+
+### Adicionado
+
+#### 🤖 OCR/IA — OpenCode (Go) + cadeia de fallback multi-provedor
+- **`OpenCodeService`**: novo provedor de IA/OCR via OpenCode Zen/Go (API OpenAI-compatible, com visão). PDFs convertidos em imagens via `pypdfium2`; extração estruturada com JSON Schema no prompt. Modelo padrão `mimo-v2.5`.
+- **Cadeia de fallback configurável** (`IA_EXTRATORES`, padrão `opencode,gemini,mistral`): se um provedor falha (sem chave, rate limit, erro), o próximo é tentado — o processamento não cai mais inteiro.
+- **`NomeExtractorOpenCode`** + `NomeExtractorComposite` agora executa a cadeia completa.
+- **`json_utils.extrair_json()`**: parser tolerante a blocos ```json e texto ao redor.
+- **Novas variáveis**: `KEY_API_OPENCODE`, `OPENCODE_BASE_URL`, `OPENCODE_MODEL_OCR`, `OPENCODE_MODEL_AI`, `IA_EXTRATORES`.
+
+### Corrigido
+- **GeminiService**: o nome do modelo era repassado ao `GenerateContentConfig`, causando `Extra inputs are not permitted` (ex.: `gemini-2.5-flash-lite`). Agora é capturado em `__init__`.
+- **`HoleriteProcessador.processar_arquivo`**: usava `arquivo.name` antes de converter `str`→`Path`.
+- **`MistralService`**: ganhou `documento_estruturado()` / `imagem_estruturada()` (OCR + chat JSON).
+
+### Notas
+- Gemini e Mistral permanecem suportados (fallback). A Folha de Ponto continua usando Gemini diretamente.
+
 ## [0.9.8] - 2026-08-01
 
 ### Adicionado

@@ -181,20 +181,39 @@ def _config_apis():
 
     def _exibir_valores_atuais():
         """Exibe os valores atuais das APIs"""
+        opencode = config_service.obter("KEY_API_OPENCODE")
         gemini = config_service.obter("KEY_API_GEMINI")
         mistral = config_service.obter("KEY_API_MISTRAL")
+        extrator = config_service.obter("IA_EXTRATORES") or "opencode,gemini,mistral"
+        modelo_ocr = config_service.obter("OPENCODE_MODEL_OCR") or "mimo-v2.5"
 
+        opencode_display = _ocultar_chave(opencode)
         gemini_display = _ocultar_chave(gemini)
         mistral_display = _ocultar_chave(mistral)
 
         conteudo = f"""[cyan]Valores atuais:[/cyan]
 
+[bold]OpenCode (Go/Zen):[/bold] {opencode_display}
+[bold]Modelo OCR (OpenCode):[/bold] {modelo_ocr}
 [bold]Google Gemini:[/bold] {gemini_display}
 [bold]Mistral AI:[/bold] {mistral_display}
+[bold]Ordem de fallback:[/bold] {extrator}
 
-[dim]As APIs sao usadas para processar PDFs preenchidos com IA.[/dim]"""
+[dim]As APIs sao usadas para processar PDFs preenchidos com IA.
+A cadeia de fallback segue a ordem de IA_EXTRATORES.[/dim]"""
 
         exibir_painel(conteudo, "Configuracoes Atuais de APIs", "cyan")
+        pausar()
+
+    def _config_opencode():
+        """Configura a API do OpenCode (Go/Zen)"""
+        console.print("\n[bold cyan]Configurar API do OpenCode (Go/Zen)[/bold cyan]")
+        console.print("[dim]Obtenha sua chave em: https://opencode.ai/auth[/dim]\n")
+
+        nova_chave = pedir_texto("Nova chave", obrigatorio=False)
+        if nova_chave:
+            config_service.definir("KEY_API_OPENCODE", nova_chave)
+            exibir_sucesso("Chave do OpenCode atualizada!")
         pausar()
 
     def _config_gemini():
@@ -224,6 +243,33 @@ def _config_apis():
         exibir_info("Testando APIs configuradas...")
         console.print()
 
+        # Testar OpenCode
+        opencode_key = config_service.obter("KEY_API_OPENCODE")
+        if opencode_key:
+            try:
+                import requests
+                base_url = config_service.obter("OPENCODE_BASE_URL") or "https://opencode.ai/zen/go/v1"
+                modelo = config_service.obter("OPENCODE_MODEL_OCR") or "mimo-v2.5"
+                resp = requests.post(
+                    f"{base_url.rstrip('/')}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {opencode_key}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "ms-automatizar/1.0",
+                        "x-opencode-session": "ms-automatizar-config",
+                    },
+                    json={"model": modelo, "messages": [{"role": "user", "content": "Responda apenas: OK"}]},
+                    timeout=30,
+                )
+                if resp.status_code == 200:
+                    exibir_sucesso("OpenCode: Funcionando")
+                else:
+                    exibir_erro(f"OpenCode: HTTP {resp.status_code} - {resp.text[:120]}")
+            except Exception as e:
+                exibir_erro(f"OpenCode: {e}")
+        else:
+            exibir_aviso("OpenCode: Nao configurado")
+
         # Testar Gemini
         gemini_key = config_service.obter("KEY_API_GEMINI")
         if gemini_key:
@@ -251,6 +297,7 @@ def _config_apis():
         MenuBuilder("CONFIGURACOES DE APIs (IA)", ICONES["api"])
         .adicionar("Ver valores atuais", _exibir_valores_atuais, ICONES["info"])
         .separador()
+        .adicionar("Configurar API do OpenCode (Go/Zen)", _config_opencode, ICONES["editar"])
         .adicionar("Configurar API do Google Gemini", _config_gemini, ICONES["editar"])
         .adicionar("Configurar API do Mistral AI", _config_mistral, ICONES["editar"])
         .separador()

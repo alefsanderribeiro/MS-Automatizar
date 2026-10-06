@@ -172,6 +172,12 @@ ONEDRIVE_URL_MODELOS=https://1drv.ms/x/...
 # Google AI (para processamento de PDFs)
 KEY_API_GEMINI=sua_chave_api
 KEY_API_MISTRAL=sua_chave_mistral
+# OpenCode (Go/Zen) — provedor de IA/OCR com fallback (ver IA_EXTRATORES)
+KEY_API_OPENCODE=sua_chave_opencode
+OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1
+OPENCODE_MODEL_OCR=mimo-v2.5
+OPENCODE_MODEL_AI=mimo-v2.5
+IA_EXTRATORES=opencode,gemini,mistral
 ```
 
 ### Planilha de Dados *(legado — modo Excel)*

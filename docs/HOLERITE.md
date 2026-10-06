@@ -14,7 +14,7 @@ Sistema automatizado para processamento e renomeacao de recibos de pagamento (ho
 O módulo de Holerite permite:
 
 - **Renomeação automática** de arquivos PDF de holerites para o nome do funcionário
-- **Extração inteligente** de informações via OCR (Mistral) e IA (Gemini)
+- **Extração inteligente** de informações via IA (OpenCode Go / Gemini / Mistral) com **cadeia de fallback**
 - **Cache MongoDB** para otimização de chamadas OCR
 - **Processamento em lote** com suporte a threads paralelas
 - **Filtro por período** (mês e ano) para organização de diretórios
@@ -29,7 +29,7 @@ src/
 ├── interface/
 │   └── interface_holerite.py      # Menu interativo
 └── services/
-    ├── analise_ai_service.py      # GeminiService, MistralService
+    ├── analise_ai_service.py      # OpenCodeService, GeminiService, MistralService
     └── cache_service.py           # Cache OCR MongoDB
 ```
 
@@ -39,9 +39,10 @@ src/
 |------------|------------------|
 | `Holerite` | Classe principal, orquestra o processamento |
 | `PdfProcessorService` | Extração de cabeçalhos de PDFs |
+| `NomeExtractorOpenCode` | Extração de nomes via IA OpenCode (Go/Zen, visão) |
 | `NomeExtractorOCR` | Extração de nomes via Mistral OCR |
 | `NomeExtractorIA` | Extração de nomes via Gemini AI |
-| `NomeExtractorComposite` | Combina OCR e IA com fallback |
+| `NomeExtractorComposite` | Executa a cadeia de extratores com fallback (padrão: OpenCode → Gemini → Mistral) |
 | `DirectoryFilter` | Filtro de diretórios por critério |
 | `ArquivoProcessor` | Processa arquivos individuais |
 
@@ -150,7 +151,15 @@ Remove todos os documentos do cache (com confirmação).
 MONGO_URI=mongodb://localhost:27017
 MONGO_DATABASE_NAME=MS_Automatizar
 
-# Mistral AI (OCR primário)
+# OpenCode (Go/Zen) — provedor principal recomendado
+KEY_API_OPENCODE=sua_chave_opencode
+OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1
+OPENCODE_MODEL_OCR=mimo-v2.5
+OPENCODE_MODEL_AI=mimo-v2.5
+# Ordem de fallback dos provedores (padrão: opencode,gemini,mistral)
+IA_EXTRATORES=opencode,gemini,mistral
+
+# Mistral AI (fallback)
 KEY_API_MISTRAL=sua_chave_mistral
 
 # Google AI (fallback)

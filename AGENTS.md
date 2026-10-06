@@ -35,8 +35,8 @@
 - Envio por E-mail (Zoho Mail) e WhatsApp (individual + grupos)
 
 ### Domínio 2: Holerite (Payslip)
-- Renomeação de PDFs de holerite por extração de nome via OCR (Mistral) ou IA (Gemini)
-- Extração completa de dados: PDF → Gemini → schema validado → MongoDB
+- Renomeação de PDFs de holerite por extração de nome via IA com **cadeia de fallback** (OpenCode → Gemini → Mistral, conforme `IA_EXTRATORES`)
+- Extração completa de dados: PDF → IA (schema validado Pydantic) → MongoDB
 - Cache de OCR por hash SHA256 para evitar reprocessamento
 - Envio automatizado por E-mail e WhatsApp
 
@@ -47,7 +47,7 @@
 | Validação | Pydantic V2 |
 | Banco | MongoDB (via PyMongo, pool thread-safe) |
 | Cache | Redis 7.2 + fallback em memória |
-| IA/OCR | Google Gemini 2.5 Pro, Mistral AI |
+| IA/OCR | OpenCode (Go), Google Gemini 2.5 Pro, Mistral AI |
 | Email | Zoho Mail API (OAuth2) |
 | WhatsApp | go-whatsapp-web-multidevice (Docker) |
 | PDF | WeasyPrint, pypdfium2, PyPDF2 |
@@ -74,8 +74,8 @@ MS-Automatizar/
 │   │               ProcessadorFolhaPonto, GerenciadorDiretorios
 │   │
 │   ├── holerite.py                   # ★ CORE: Holerite (renomeação/processamento)
-│   │   └── Classes: NomeExtractorOCR, NomeExtractorIA, NomeExtractorComposite,
-│   │               PdfProcessorService, ArquivoProcessor, Holerite
+│   │   └── Classes: NomeExtractorOpenCode, NomeExtractorOCR, NomeExtractorIA,
+│   │               NomeExtractorComposite, PdfProcessorService, ArquivoProcessor, Holerite
 │   │
 │   ├── comandos/                     # Handlers CLI (argparse)
 │   │   ├── main.py                   # start_command() — dispatch central
@@ -122,7 +122,7 @@ MS-Automatizar/
 │   │   ├── __init__.py               # Hub central de re-exports
 │   │   ├── mongodb_connection.py      # MongoDBConnectionPool (singleton thread-safe)
 │   │   ├── mongodb_utils.py          # Funções auxiliares de lookup/formatação de data
-│   │   ├── analise_ai_service.py     # GeminiService + MistralService
+│   │   ├── analise_ai_service.py     # OpenCodeService + GeminiService + MistralService
 │   │   ├── cache_service.py          # CacheService (Redis + memória, singleton)
 │   │   ├── cache_keys.py             # ★ Formadores centralizados de chaves de cache (padronização p/ evitar stale)
 │   │   ├── cache_ocr_service.py      # CacheOCRMongoDB (hash SHA256)
@@ -436,7 +436,7 @@ Menu Principal
 │
 └── Configurações
     ├── MongoDB (URI, database, pool, testar)
-    ├── APIs (Gemini, Mistral, testar)
+    ├── APIs (OpenCode, Gemini, Mistral, testar)
     ├── Sistema (modo operação, log level, output dir)
     └── Zoho Mail (OAuth2 completo)
 ```
@@ -444,6 +444,13 @@ Menu Principal
 ---
 
 ## 8. Integrações Externas
+
+### OpenCodeService (analise_ai_service.py)
+- API OpenAI-compatible (`/chat/completions`) do OpenCode **Go/Zen**, com visão
+- Modelo padrão: `mimo-v2.5` (config via `OPENCODE_MODEL_OCR` / `OPENCODE_MODEL_AI`)
+- Métodos: `imagem()`, `texto()`, `documento()`, `documento_estruturado()`, `imagem_estruturada()`
+- PDF → imagens via `pypdfium2`; extração estruturada com JSON Schema no prompt
+- Headers exigidos: `x-opencode-session` + User-Agent de agente; `Authorization: Bearer KEY_API_OPENCODE`
 
 ### GeminiService (analise_ai_service.py)
 - Modelo: `gemini-2.5-pro` (default)

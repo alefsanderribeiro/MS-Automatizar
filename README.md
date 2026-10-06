@@ -10,7 +10,7 @@ Automação administrativa com inteligência artificial: geração e análise de
 
 - **Geração de Folhas de Ponto** — a partir de dados em MongoDB, com renderização HTML → PDF.
 - **Processamento de Holerites** — leitura/renomeação de PDFs de holerites de forma automatizada.
-- **OCR + IA** — análise de documentos manuscritos (PDFs/imagens) usando Google Gemini / Mistral.
+- **OCR + IA** — análise de documentos manuscritos (PDFs/imagens) usando **OpenCode (Go)**, Google Gemini e Mistral AI, com **cadeia de fallback** configurável entre provedores.
 - **Cache OCR** — cache de resultados no MongoDB para evitar reprocessamento.
 - **Envio automático** — distribuição de folhas e holerites por **e-mail (Zoho Mail)** e **WhatsApp** (individuais e grupos).
 - **Persistência MongoDB** — modelos Pydantic + serviços modulares.
@@ -26,7 +26,7 @@ Automação administrativa com inteligência artificial: geração e análise de
 | Modelagem    | Pydantic v2 |
 | Banco        | MongoDB (PyMongo) |
 | Cache        | Redis (opcional) / memória |
-| OCR / IA     | Google Gemini, Mistral AI, pypdfium2 |
+| OCR / IA     | OpenCode (Go), Google Gemini, Mistral AI, pypdfium2 |
 | PDF          | WeasyPrint, PyPDF2 |
 | Planilhas    | pandas, openpyxl |
 | UI           | rich, questionary |
@@ -63,7 +63,12 @@ cp .env_exemplo .env   # crie o seu com base nas váriaveis abaixo
 ### Variáveis de Ambiente (`.env`)
 
 ```ini
-# IA
+# IA (cadeia de fallback: OpenCode -> Gemini -> Mistral, conforme IA_EXTRATORES)
+KEY_API_OPENCODE=             # recomendado (OpenCode Go/Zen) — https://opencode.ai/auth
+OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1   # Go; Zen = https://opencode.ai/zen/v1
+OPENCODE_MODEL_OCR=mimo-v2.5  # modelo de visão para OCR (mimo-v2.5, mimo-v2-omni, qwen3.7-plus...)
+OPENCODE_MODEL_AI=mimo-v2.5   # modelo de chat para análises de texto
+IA_EXTRATORES=opencode,gemini,mistral
 KEY_API_GEMINI=               # opcional (Google Gemini)
 KEY_API_MISTRAL=              # opcional (Mistral AI)
 
@@ -284,6 +289,26 @@ uv run python automatizar.py holerite stats --competencia "01/2025"
 ```
 
 ### 4. Serviços de IA e OCR
+
+Os três provedores expõem a mesma interface (`imagem()`, `texto()`, `documento()`, `documento_estruturado()`, `imagem_estruturada()`) e são usados numa **cadeia de fallback** definida por `IA_EXTRATORES` (padrão: `opencode,gemini,mistral`). Se um provedor falhar (sem chave, rate limit, erro), o próximo é tentado.
+
+#### OpenCodeService (OpenCode Go / Zen)
+- API OpenAI-compatible (`/chat/completions`) com **visão** — PDFs convertidos em imagens via `pypdfium2`
+- Modelo padrão: `mimo-v2.5` (configurável por `OPENCODE_MODEL_OCR`/`OPENCODE_MODEL_AI`)
+- Extração estruturada: envia o JSON Schema no prompt e normaliza a resposta em JSON
+- Headers exigidos pelo Go: `x-opencode-session` e User-Agent de agente
+
+```python
+from src.services.analise_ai_service import OpenCodeService
+
+oc = OpenCodeService()
+nome = oc.imagem("cabecalho.png", "Informe o nome completo do funcionário")
+resultado_json = oc.documento_estruturado(
+    Path("holerite.pdf"),
+    "Extraia os dados do holerite",
+    schema_pydantic=HoleriteExtracaoSchema
+)
+```
 
 #### GeminiService (Google Generative AI)
 - Modelo padrão: `gemini-2.5-pro` (configurável via `model=` no construtor)
