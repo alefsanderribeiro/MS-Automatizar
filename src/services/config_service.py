@@ -103,6 +103,41 @@ class ConfigService:
             descricao="Chave de API do Mistral AI (alternativa)",
             sensivel=True
         ),
+        "KEY_API_OPENCODE": ConfigItem(
+            chave="KEY_API_OPENCODE",
+            valor=None,
+            tipo=TipoConfiguracao.API,
+            descricao="Chave de API do OpenCode (Zen/Go) — https://opencode.ai/auth",
+            sensivel=True
+        ),
+        "OPENCODE_BASE_URL": ConfigItem(
+            chave="OPENCODE_BASE_URL",
+            valor=None,
+            tipo=TipoConfiguracao.API,
+            descricao="Base URL da API do OpenCode (Go: .../zen/go/v1; Zen: .../zen/v1)",
+            valor_padrao="https://opencode.ai/zen/go/v1"
+        ),
+        "OPENCODE_MODEL_OCR": ConfigItem(
+            chave="OPENCODE_MODEL_OCR",
+            valor=None,
+            tipo=TipoConfiguracao.API,
+            descricao="Modelo de visão do OpenCode para OCR (ex: mimo-v2.5)",
+            valor_padrao="mimo-v2.5"
+        ),
+        "OPENCODE_MODEL_AI": ConfigItem(
+            chave="OPENCODE_MODEL_AI",
+            valor=None,
+            tipo=TipoConfiguracao.API,
+            descricao="Modelo de chat do OpenCode para análises de texto",
+            valor_padrao="mimo-v2.5"
+        ),
+        "IA_EXTRATORES": ConfigItem(
+            chave="IA_EXTRATORES",
+            valor=None,
+            tipo=TipoConfiguracao.SISTEMA,
+            descricao="Ordem de fallback dos provedores de IA (ex: opencode,gemini,mistral)",
+            valor_padrao="opencode,gemini,mistral"
+        ),
         
         # Sistema
         "MODO_OPERACAO": ConfigItem(
@@ -347,6 +382,14 @@ class ConfigService:
                 "# ==================== APIs de IA ====================",
                 "KEY_API_GEMINI=",
                 "KEY_API_MISTRAL=",
+                "KEY_API_OPENCODE=",
+                "# OpenCode: Go usa .../zen/go/v1; Zen usa .../zen/v1",
+                "OPENCODE_BASE_URL=https://opencode.ai/zen/go/v1",
+                "# Modelos de visão: mimo-v2.5, mimo-v2-omni, qwen3.7-plus, qwen3.6-plus, qwen3.5-plus",
+                "OPENCODE_MODEL_OCR=mimo-v2.5",
+                "OPENCODE_MODEL_AI=mimo-v2.5",
+                "# Ordem de fallback dos provedores de IA (opencode, gemini, mistral)",
+                "IA_EXTRATORES=opencode,gemini,mistral",
                 "",
                 "# ==================== Sistema ====================",
                 "# Modo de operação: mongodb, excel ou ambos",

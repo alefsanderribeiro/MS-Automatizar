@@ -1,9 +1,22 @@
+"""Serviços de IA (OCR / extração estruturada).
+
+Contém:
+- ``GeminiService``   — Google Gemini (SDK google-genai)
+- ``MistralService``  — Mistral (OCR + chat)
+- ``OpenCodeService`` — OpenCode Zen/Go (API OpenAI-compatible, visão)
+
+Todos expõem a mesma interface (``imagem``, ``texto``, ``documento``,
+``imagem_estruturada``, ``documento_estruturado``) para permitir a cadeia de
+fallback usada em ``src/holerite.py``.
+"""
+
 from pathlib import Path
 import PIL.Image
 import requests
 import io
 import httpx
 import base64
+import json
 from abc import ABC
 from src.utils.dotenv_path import caminho_dotenv
 import dotenv
@@ -11,10 +24,15 @@ from google import genai
 from google.genai import types
 from mistralai import Mistral
 from src.utils.logger_config_v2 import get_logger
+from src.utils.json_utils import extrair_json
 
 logger = get_logger("ia")
 
 
+# Valores padrão do OpenCode Go (podem ser sobrescritos pelo .env)
+_OPENCODE_BASE_URL_PADRAO = "https://opencode.ai/zen/go/v1"
+_OPENCODE_MODEL_OCR_PADRAO = "mimo-v2.5"
+_OPENCODE_MODEL_AI_PADRAO = "mimo-v2.5"
 
 
 class ServiceBaseGemini(ABC):
@@ -46,7 +64,11 @@ class ServiceBaseGemini(ABC):
             return False
     
     def _create_config(self, **kwargs) -> types.GenerateContentConfig:
-        """Cria uma nova configuração mesclando os kwargs padrão com os fornecidos"""
+        """Cria uma nova configuração mesclando os kwargs padrão com os fornecidos.
+
+        IMPORTANTE: o nome do modelo NUNCA deve entrar aqui — ele é parâmetro do
+        ``generate_content``. Ver GeminiService.__init__ (kwargs.pop("model")).
+        """
         merged_kwargs = {**self._default_config_kwargs, **kwargs}
         return types.GenerateContentConfig(**merged_kwargs)
     
@@ -110,16 +132,72 @@ class ServiceBaseMistral(ABC):
         return self._configurado
 
 
+class ServiceBaseOpenCode(ABC):
+    """Classe base para serviços OpenAI-compatible (OpenCode Zen/Go).
+
+    Usa a API HTTP de chat/completions do OpenCode. Requer:
+      - ``KEY_API_OPENCODE`` no .env (chave do console opencode.ai);
+      - header ``x-opencode-session`` (roteamento/cache do Go);
+      - User-Agent de agente (exigido pelos termos do Go).
+    """
+
+    def __init__(self, **kwargs):
+        self.logger = get_logger("ia")
+        self._api_key = dotenv.get_key(caminho_dotenv(), "KEY_API_OPENCODE")
+        self._base_url = (
+            dotenv.get_key(caminho_dotenv(), "OPENCODE_BASE_URL")
+            or _OPENCODE_BASE_URL_PADRAO
+        ).rstrip("/")
+        self._sdk_disponivel = False
+        self._model = None
+        self._default_config_kwargs = kwargs
+        self._configurado = self._configurar_sdk()
+
+    def _configurar_sdk(self) -> bool:
+        if not self._api_key:
+            logger.warning(
+                f"IA: API Key (KEY_API_OPENCODE) não configurada para "
+                f"{self.__class__.__name__}"
+            )
+            return False
+        if not self._base_url:
+            logger.error(f"IA: OPENCODE_BASE_URL vazia para {self.__class__.__name__}")
+            return False
+        self._sdk_disponivel = True
+        return True
+
+    @property
+    def api_key(self) -> str:
+        return self._api_key
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
+    @property
+    def sdk_disponivel(self) -> bool:
+        return self._sdk_disponivel
+
+    @property
+    def model(self):
+        return self._model
+
+    @property
+    def configurado(self) -> bool:
+        return self._configurado
+
 
 class GeminiService(ServiceBaseGemini):
     def __init__(self, **kwargs):
+        # O nome do modelo é parâmetro do generate_content, NÃO pode ir para o
+        # GenerateContentConfig (senão o SDK pydantic lança extra_forbidden).
+        model = kwargs.pop("model", None)
         super().__init__(**kwargs)
-        
+
         # Caso não seja especificado com o "model" nos kwargs, usar o padrão que é o "gemini-2.5-pro"
         # Trocar para "gemini-2.5-flash-lite" se quiser uma versão mais leve
         # Usar o "gemini-2.5-pro" para análises mais robustas e profundas
-
-        self._model = kwargs.get("model", "gemini-2.5-pro")
+        self._model = model or "gemini-2.5-pro"
 
     def __str__(self):
         return "Serviço Gemini para realizar análises de texto, imagem e documentos."
@@ -652,3 +730,248 @@ class MistralService(ServiceBaseMistral):
         except Exception as e:
             logger.error(f"Erro ao processar documento da internet: {e}")
             return None
+
+    # ---------- Extração estruturada (OCR -> chat JSON) ----------
+
+    def _chat_json(self, prompt: str, schema_json: dict, **kwargs) -> str:
+        """Envia um prompt pedindo JSON conforme schema e devolve o JSON normalizado."""
+        prompt_final = (
+            f"{prompt}\n\n"
+            "Responda APENAS com um objeto JSON válido, sem texto adicional, sem "
+            "comentários e sem blocos de código, seguindo EXATAMENTE este JSON "
+            "Schema:\n"
+            f"{json.dumps(schema_json, ensure_ascii=False)}"
+        )
+        chat_response = self._tentar_chat(
+            [{"role": "user", "content": prompt_final}]
+        )
+        if not chat_response or not chat_response.choices:
+            raise ValueError("Mistral: resposta vazia na extração estruturada")
+        conteudo = chat_response.choices[0].message.content
+        dados = extrair_json(conteudo)
+        if dados is None:
+            raise ValueError(
+                f"Mistral: não foi possível interpretar JSON: {str(conteudo)[:200]}"
+            )
+        return json.dumps(dados, ensure_ascii=False)
+
+    def documento_estruturado(self, documento: Path, prompt: str, schema_pydantic, **kwargs):
+        """Extrai dados estruturados de um documento via OCR Mistral + chat JSON."""
+        if not self.configurado:
+            raise RuntimeError("Mistral não configurado (KEY_API_MISTRAL ausente)")
+
+        texto_ocr = self.documento(documento, prompt=None)
+        if not texto_ocr:
+            raise ValueError("Mistral: OCR não retornou texto")
+
+        schema_json = schema_pydantic.model_json_schema()
+        prompt_final = (
+            f"Texto extraído do documento (OCR):\n\n{texto_ocr}\n\n"
+            f"Tarefa: {prompt}"
+        )
+        return self._chat_json(prompt_final, schema_json, **kwargs)
+
+    def imagem_estruturada(self, imagem, prompt: str, schema_pydantic, **kwargs):
+        """Extrai dados estruturados de uma imagem via OCR Mistral + chat JSON."""
+        if not self.configurado:
+            raise RuntimeError("Mistral não configurado (KEY_API_MISTRAL ausente)")
+
+        texto_ocr = self.imagem(imagem, prompt=None)
+        if not texto_ocr:
+            raise ValueError("Mistral: OCR não retornou texto")
+
+        schema_json = schema_pydantic.model_json_schema()
+        prompt_final = (
+            f"Texto extraído da imagem (OCR):\n\n{texto_ocr}\n\n"
+            f"Tarefa: {prompt}"
+        )
+        return self._chat_json(prompt_final, schema_json, **kwargs)
+
+
+class OpenCodeService(ServiceBaseOpenCode):
+    """Serviço de IA via OpenCode (Zen/Go) — API OpenAI-compatible com visão.
+
+    Modelos com visão disponíveis (OpenCode Go): ``mimo-v2.5``,
+    ``mimo-v2-omni``, ``qwen3.7-plus``, ``qwen3.6-plus``, ``qwen3.5-plus``.
+    Configure com ``OPENCODE_MODEL_OCR`` / ``OPENCODE_MODEL_AI`` no .env.
+
+    PDFs são convertidos página a página em imagens (pypdfium2) e enviados ao
+    modelo de visão, já que o endpoint é de chat (não tem suporte nativo a PDF).
+    """
+
+    def __init__(self, **kwargs):
+        model = kwargs.pop("model", None)
+        super().__init__(**kwargs)
+        self._model_ocr = model or (
+            dotenv.get_key(caminho_dotenv(), "OPENCODE_MODEL_OCR")
+            or _OPENCODE_MODEL_OCR_PADRAO
+        )
+        self._model_ai = (
+            dotenv.get_key(caminho_dotenv(), "OPENCODE_MODEL_AI")
+            or self._model_ocr
+            or _OPENCODE_MODEL_AI_PADRAO
+        )
+        self._model = self._model_ocr
+        # User-Agent de agente (exigido pelos termos do Go)
+        self._user_agent = "ms-automatizar/1.0 (+https://openclaw.alefsander.dev)"
+
+    def __str__(self):
+        return "Serviço OpenCode (Zen/Go) para análises de texto, imagem e documentos."
+
+    # ---------- helpers ----------
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": self._user_agent,
+            "x-opencode-session": "ms-automatizar-ocr",
+        }
+
+    @staticmethod
+    def _imagem_para_data_url(imagem) -> str:
+        """Converte PIL.Image / caminho / URL em data URL base64 PNG."""
+        if isinstance(imagem, PIL.Image.Image):
+            img = imagem
+        elif isinstance(imagem, (str, Path)) and Path(imagem).is_file():
+            img = PIL.Image.open(imagem)
+        else:
+            resp = requests.get(imagem, timeout=60)
+            resp.raise_for_status()
+            img = PIL.Image.open(io.BytesIO(resp.content))
+
+        buffer = io.BytesIO()
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGB")
+        img.save(buffer, format="PNG")
+        b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+
+    def _pdf_para_data_urls(self, documento: Path, dpi: float = 200.0) -> list:
+        """Converte um PDF em lista de data URLs (uma por página)."""
+        from src.utils.pdf_conversor import converter_pdf_para_imagens
+
+        imagens = converter_pdf_para_imagens(documento, dpi=dpi)
+        return [self._imagem_para_data_url(img) for img in imagens]
+
+    def _chat(self, messages: list, model: str = None, **kwargs):
+        """Chama /chat/completions e devolve o texto da resposta (ou None)."""
+        if not self.configurado:
+            logger.error("OpenCode: serviço não configurado (KEY_API_OPENCODE ausente)")
+            return None
+
+        payload = {
+            "model": model or self._model_ai,
+            "messages": messages,
+        }
+        # Repassa apenas parâmetros aceitos pela API
+        for chave in ("temperature", "max_tokens", "response_format"):
+            if chave in kwargs and kwargs[chave] is not None:
+                payload[chave] = kwargs[chave]
+
+        url = f"{self._base_url}/chat/completions"
+        try:
+            logger.info(f"OpenCode: chamando modelo {payload['model']}...")
+            resp = requests.post(
+                url,
+                headers=self._headers(),
+                json=payload,
+                timeout=kwargs.get("timeout", 180),
+            )
+            if resp.status_code != 200:
+                logger.error(
+                    f"OpenCode: erro HTTP {resp.status_code}: {resp.text[:500]}"
+                )
+                return None
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                logger.error(f"OpenCode: resposta sem choices: {str(data)[:300]}")
+                return None
+            content = choices[0].get("message", {}).get("content")
+            if isinstance(content, list):
+                # Alguns modelos devolvem lista de partes
+                content = "".join(
+                    p.get("text", "") for p in content if isinstance(p, dict)
+                )
+            return content
+        except Exception as e:
+            logger.error(f"OpenCode: erro na chamada: {type(e).__name__}: {e}")
+            return None
+
+    @staticmethod
+    def _prompt_com_schema(prompt: str, schema_json: dict) -> str:
+        return (
+            f"{prompt}\n\n"
+            "Responda APENAS com um objeto JSON válido, sem texto adicional, "
+            "sem comentários e sem blocos de código, seguindo EXATAMENTE este "
+            "JSON Schema:\n"
+            f"{json.dumps(schema_json, ensure_ascii=False)}"
+        )
+
+    # ---------- interface pública ----------
+
+    def texto(self, prompt: str, **kwargs):
+        return self._chat([{"role": "user", "content": prompt}], **kwargs)
+
+    def imagem(self, imagem, prompt: str, **kwargs):
+        data_url = self._imagem_para_data_url(imagem)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ],
+        }]
+        return self._chat(messages, **kwargs)
+
+    def documento(self, documento: Path, prompt: str, **kwargs):
+        if not isinstance(documento, Path):
+            raise TypeError("O parâmetro 'documento' deve ser do tipo Path.")
+        if not documento.exists():
+            raise FileNotFoundError(f"O arquivo '{documento}' não foi encontrado.")
+
+        data_urls = self._pdf_para_data_urls(documento)
+        content = [{"type": "text", "text": prompt}]
+        for url in data_urls:
+            content.append({"type": "image_url", "image_url": {"url": url}})
+        return self._chat([{"role": "user", "content": content}], **kwargs)
+
+    def imagem_estruturada(self, imagem, prompt: str, schema_pydantic, **kwargs):
+        schema_json = schema_pydantic.model_json_schema()
+        prompt_final = self._prompt_com_schema(prompt, schema_json)
+        data_url = self._imagem_para_data_url(imagem)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt_final},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ],
+        }]
+        return self._extrair_estruturado(messages, **kwargs)
+
+    def documento_estruturado(self, documento: Path, prompt: str, schema_pydantic, **kwargs):
+        if not isinstance(documento, Path):
+            raise TypeError("O parâmetro 'documento' deve ser do tipo Path.")
+        if not documento.exists():
+            raise FileNotFoundError(f"O arquivo '{documento}' não foi encontrado.")
+
+        schema_json = schema_pydantic.model_json_schema()
+        prompt_final = self._prompt_com_schema(prompt, schema_json)
+        data_urls = self._pdf_para_data_urls(documento)
+        content = [{"type": "text", "text": prompt_final}]
+        for url in data_urls:
+            content.append({"type": "image_url", "image_url": {"url": url}})
+        return self._extrair_estruturado([{"role": "user", "content": content}], **kwargs)
+
+    def _extrair_estruturado(self, messages: list, **kwargs):
+        """Chama o modelo pedindo JSON e valida/normaliza a saída."""
+        texto = self._chat(messages, response_format={"type": "json_object"}, **kwargs)
+        if not texto:
+            raise ValueError("OpenCode: resposta vazia na extração estruturada")
+        dados = extrair_json(texto)
+        if dados is None:
+            raise ValueError(
+                f"OpenCode: não foi possível interpretar JSON da resposta: {texto[:200]}"
+            )
+        return json.dumps(dados, ensure_ascii=False)

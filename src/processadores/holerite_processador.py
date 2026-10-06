@@ -28,13 +28,59 @@ from src.services.funcionario_service import FuncionarioService
 from src.services.contato_funcionario_service import ContatoFuncionarioService
 from src.services.empresa_service import EmpresaService
 
-# Tentar importar GeminiService
+# Tentar importar serviços de IA (Gemini / Mistral / OpenCode)
 try:
-    from src.services.analise_ai_service import GeminiService
-    GEMINI_DISPONIVEL = True
+    from src.services.analise_ai_service import (
+        GeminiService,
+        MistralService,
+        OpenCodeService,
+    )
+    from src.utils.dotenv_path import caminho_dotenv
+    import dotenv
+    IA_DISPONIVEL = True
 except ImportError:
-    GEMINI_DISPONIVEL = False
-    logger.warning("GeminiService não disponível")
+    IA_DISPONIVEL = False
+    logger.warning("Serviços de IA não disponíveis")
+
+
+# Provedores de extração suportados (nome no .env -> fábrica)
+_PROVEDORES_EXTRACAO = {
+    "opencode": OpenCodeService,
+    "gemini": GeminiService,
+    "mistral": MistralService,
+}
+
+# Ordem padrão caso IA_EXTRATORES não esteja definido no .env
+_ORDEM_PADRAO_EXTRACAO = ["opencode", "gemini", "mistral"]
+
+
+def _criar_servicos_extracao() -> list:
+    """Cria a cadeia de serviços de extração conforme IA_EXTRATORES do .env.
+
+    Ex.: IA_EXTRATORES="opencode,gemini,mistral" usa OpenCode primeiro e cai
+    para Gemini/Mistral em caso de falha. Nomes desconhecidos são ignorados.
+    """
+    if not IA_DISPONIVEL:
+        return []
+
+    ordem_config = dotenv.get_key(caminho_dotenv(), "IA_EXTRATORES")
+    nomes = (
+        [p.strip().lower() for p in ordem_config.split(",") if p.strip()]
+        if ordem_config
+        else list(_ORDEM_PADRAO_EXTRACAO)
+    )
+
+    servicos = []
+    for nome in nomes:
+        fabrica = _PROVEDORES_EXTRACAO.get(nome)
+        if not fabrica:
+            logger.warning(f"[ia] Provedor desconhecido em IA_EXTRATORES: '{nome}'")
+            continue
+        try:
+            servicos.append(fabrica())
+        except Exception as e:
+            logger.warning(f"[ia] Falha ao inicializar provedor '{nome}': {e}")
+    return servicos
 
 try:
     from bson import ObjectId
@@ -116,20 +162,27 @@ class HoleriteProcessador:
         Inicializa o processador.
         
         Args:
-            gemini_service: Instância do GeminiService (cria nova se None)
+            gemini_service: Instância única de IA (compatibilidade). Se None,
+                monta a cadeia configurada em IA_EXTRATORES (OpenCode/Gemini/Mistral)
             holerite_service: Instância do HoleriteService
             funcionario_service: Instância do FuncionarioService
             contato_service: Instância do ContatoFuncionarioService
             empresa_service: Instância do EmpresaService
         """
-        # Inicializar serviços
+        # Cadeia de serviços de IA para extração (fallback entre provedores)
         if gemini_service:
-            self.gemini = gemini_service
-        elif GEMINI_DISPONIVEL:
-            self.gemini = GeminiService()
+            self.servicos = [gemini_service]
         else:
-            self.gemini = None
-            logger.warning("GeminiService não inicializado")
+            self.servicos = _criar_servicos_extracao()
+            if self.servicos:
+                logger.info(
+                    "[ia] Cadeia de extração: "
+                    + " -> ".join(type(s).__name__ for s in self.servicos)
+                )
+            else:
+                logger.warning("[ia] Nenhum serviço de IA disponível")
+        # Compatibilidade: mantém referência ao primeiro serviço como .gemini
+        self.gemini = self.servicos[0] if self.servicos else None
         
         self.holerite_service = holerite_service or HoleriteService()
         self.funcionario_service = funcionario_service or FuncionarioService()
@@ -143,9 +196,12 @@ class HoleriteProcessador:
     
     @property
     def disponivel(self) -> bool:
-        """Verifica se o processador está pronto"""
+        """Verifica se o processador está pronto (algum provedor de IA + serviços)"""
+        algum_ia = any(
+            getattr(s, "configurado", False) for s in (self.servicos or [])
+        )
         return (
-            self.gemini is not None and
+            algum_ia and
             self.holerite_service.disponivel and
             self.funcionario_service.disponivel
         )
@@ -205,7 +261,12 @@ class HoleriteProcessador:
         """
         resultado = ResultadoProcessamentoHolerite(arquivo=str(arquivo))
         tempo_inicio = time.time()
-        
+
+        # Normalizar para Path antes de qualquer uso de atributos (ex.: .name)
+        if not isinstance(arquivo, Path):
+            arquivo = Path(arquivo)
+        resultado.arquivo = str(arquivo)
+
         # Correlation ID para rastreamento ponta-a-ponta
         with logger.correlation("processar_holerite") as corr_id:
             logger.info(f"Processando holerite: {arquivo.name}", correlation_id=corr_id)
@@ -214,9 +275,6 @@ class HoleriteProcessador:
         if not self.disponivel:
             resultado.erro = "Processador não disponível (Gemini ou MongoDB indisponível)"
             return resultado
-        
-        if not isinstance(arquivo, Path):
-            arquivo = Path(arquivo)
         
         if not arquivo.exists():
             resultado.erro = f"Arquivo não encontrado: {arquivo}"
@@ -243,50 +301,60 @@ class HoleriteProcessador:
         
         logger.info(f"Processando holerite: {arquivo.name}")
         
-        # ==================== EXTRAÇÃO COM GEMINI ====================
+        # ==================== EXTRAÇÃO COM IA (fallback entre provedores) ====================
         extracao = None
+        modelo_usado = None
         tempo_extracao_inicio = time.time()
-        
-        for tentativa in range(1, max_tentativas + 1):
-            try:
-                with logger.performance("gemini_extracao_holerite"):
-                    resultado_json = self.gemini.documento_estruturado(
-                        documento=arquivo,
-                        prompt=self.PROMPT_EXTRACAO,
-                        schema_pydantic=HoleriteExtracaoSchema,
-                        temperature=temperatura
-                    )
-                
-                resultado.extracao_json = resultado_json
-                
-                # Validar resposta
-                if not resultado_json or len(resultado_json) < 50:
-                    if tentativa < max_tentativas:
-                        logger.warning(f"Resposta curta, tentando novamente ({tentativa}/{max_tentativas})")
-                        continue
-                    else:
-                        raise ValueError("Resposta do Gemini muito curta")
-                
-                # Parsear para modelo Pydantic
-                extracao = HoleriteExtracaoSchema.model_validate_json(resultado_json)
-                resultado.extracao = extracao
 
-                # Formar competência no formato MM/AAAA
-                competencia = f"{extracao.mes_referencia:02d}/{extracao.ano_referencia}"
-                logger.info(f"  ✓ Extração OK: {extracao.funcionario_nome}, {competencia}")
+        servicos = [s for s in (self.servicos or []) if getattr(s, "configurado", False)]
+        if not servicos:
+            resultado.erro = "Nenhum serviço de IA configurado (defina KEY_API_OPENCODE, KEY_API_GEMINI ou KEY_API_MISTRAL)"
+            resultado.tempo_total_s = time.time() - tempo_inicio
+            return resultado
+
+        for servico in servicos:
+            nome_servico = getattr(servico, "model", None) or type(servico).__name__
+            for tentativa in range(1, max_tentativas + 1):
+                try:
+                    with logger.performance("ia_extracao_holerite"):
+                        resultado_json = servico.documento_estruturado(
+                            documento=arquivo,
+                            prompt=self.PROMPT_EXTRACAO,
+                            schema_pydantic=HoleriteExtracaoSchema,
+                            temperature=temperatura
+                        )
+
+                    resultado.extracao_json = resultado_json
+
+                    # Validar resposta
+                    if not resultado_json or len(resultado_json) < 50:
+                        if tentativa < max_tentativas:
+                            logger.warning(f"Resposta curta ({nome_servico}), tentando novamente ({tentativa}/{max_tentativas})")
+                            continue
+                        else:
+                            raise ValueError("Resposta da IA muito curta")
+
+                    # Parsear para modelo Pydantic
+                    extracao = HoleriteExtracaoSchema.model_validate_json(resultado_json)
+                    resultado.extracao = extracao
+                    modelo_usado = nome_servico
+
+                    # Formar competência no formato MM/AAAA
+                    competencia = f"{extracao.mes_referencia:02d}/{extracao.ano_referencia}"
+                    logger.info(f"  ✓ Extração OK ({nome_servico}): {extracao.funcionario_nome}, {competencia}")
+                    break
+
+                except Exception as e:
+                    logger.warning(f"  Erro com {nome_servico} (tentativa {tentativa}): {e}")
+
+            if extracao:
                 break
-                
-            except Exception as e:
-                logger.warning(f"  Erro na tentativa {tentativa}: {e}")
-                if tentativa >= max_tentativas:
-                    resultado.erro = f"Falha na extração após {max_tentativas} tentativas: {e}"
-                    resultado.tempo_total_s = time.time() - tempo_inicio
-                    return resultado
-        
+            logger.warning(f"  Provedor {nome_servico} esgotado, tentando próximo da cadeia...")
+
         resultado.tempo_extracao_s = time.time() - tempo_extracao_inicio
-        
+
         if not extracao:
-            resultado.erro = "Falha na extração: objeto vazio"
+            resultado.erro = "Falha na extração: todos os provedores de IA falharam"
             resultado.tempo_total_s = time.time() - tempo_inicio
             return resultado
         
@@ -366,7 +434,7 @@ class HoleriteProcessador:
 
             processamento_info = ProcessamentoHolerite(
                 processado_em=datetime.now(timezone.utc),
-                modelo_ia="gemini-2.5-pro",
+                modelo_ia=modelo_usado or "desconhecido",
                 tempo_processamento_ms=int(resultado.tempo_extracao_s * 1000),
                 confianca=None
             )

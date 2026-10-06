@@ -132,6 +132,41 @@ VARIAVEIS_AMBIENTE: List[VariavelConfig] = [
         validador=validar_api_key,
         exemplo="..."
     ),
+    VariavelConfig(
+        nome="KEY_API_OPENCODE",
+        nivel=NivelVariavel.RECOMENDADA,
+        descricao="Chave de API do OpenCode (Zen/Go) — https://opencode.ai/auth",
+        validador=validar_api_key,
+        exemplo="sk-..."
+    ),
+    VariavelConfig(
+        nome="OPENCODE_BASE_URL",
+        nivel=NivelVariavel.OPCIONAL,
+        descricao="Base URL da API do OpenCode (Go: .../zen/go/v1; Zen: .../zen/v1)",
+        valor_padrao="https://opencode.ai/zen/go/v1",
+        exemplo="https://opencode.ai/zen/go/v1"
+    ),
+    VariavelConfig(
+        nome="OPENCODE_MODEL_OCR",
+        nivel=NivelVariavel.OPCIONAL,
+        descricao="Modelo de visão do OpenCode para OCR (ex: mimo-v2.5)",
+        valor_padrao="mimo-v2.5",
+        exemplo="mimo-v2.5"
+    ),
+    VariavelConfig(
+        nome="OPENCODE_MODEL_AI",
+        nivel=NivelVariavel.OPCIONAL,
+        descricao="Modelo de chat do OpenCode para análises de texto",
+        valor_padrao="mimo-v2.5",
+        exemplo="mimo-v2.5"
+    ),
+    VariavelConfig(
+        nome="IA_EXTRATORES",
+        nivel=NivelVariavel.OPCIONAL,
+        descricao="Ordem de fallback dos provedores de IA (ex: opencode,gemini,mistral)",
+        valor_padrao="opencode,gemini,mistral",
+        exemplo="opencode,gemini,mistral"
+    ),
 ]
 
 
