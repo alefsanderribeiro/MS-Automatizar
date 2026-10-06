@@ -11,9 +11,15 @@ import tempfile
 import re
 
 # Imports dos serviços que permanecem separados
-from src.services.analise_ai_service import GeminiService, MistralService
+from src.services.analise_ai_service import (
+    GeminiService,
+    MistralService,
+    OpenCodeService,
+)
 from src.services.cache_ocr_service import cache_ocr
+from src.utils.dotenv_path import caminho_dotenv
 from src.utils.logger_config_v2 import get_logger
+import dotenv
 
 logger = get_logger("holerite")
 
@@ -79,7 +85,7 @@ class PdfProcessorService(IPdfProcessor):
 
         self.logger = get_logger("holerite")
         self.diretorio_processamento = diretorio_processamento
-        self.coordenadas_cabecalho = ((120, 785), (363, 795))
+        self.coordenadas_cabecalho = ((50, 785), (363, 795))
     
     def extrair_cabecalho(self, arquivo: Path) -> Path:
         self.diretorio_processamento.mkdir(parents=True, exist_ok=True)
@@ -210,6 +216,10 @@ class NomeExtractorOCR(IExtractorNome):
     def __init__(self):
         self.ocr = MistralService()
     
+    @property
+    def nome(self) -> str:
+        return "mistral"
+
     def extrair_nome(self, arquivo: Path) -> str:
         """
         Extrai nome usando OCR Mistral, com cache automático baseado em hash da imagem
@@ -220,6 +230,9 @@ class NomeExtractorOCR(IExtractorNome):
         Returns:
             Nome do funcionário
         """
+        if not self.ocr.configurado:
+            raise RuntimeError("Mistral não configurado (KEY_API_MISTRAL ausente)")
+
         try:
             # ✨ TENTAR CACHE PRIMEIRO
             if cache_ocr and cache_ocr.disponivel:
@@ -258,6 +271,10 @@ class NomeExtractorIA(IExtractorNome):
     def __init__(self):
         self.servico_gemini = GeminiService(model="gemini-2.5-flash-lite")
     
+    @property
+    def nome(self) -> str:
+        return "gemini"
+
     def extrair_nome(self, arquivo: Path) -> str:
         """
         Extrai nome usando IA, com cache automático baseado em hash da imagem
@@ -268,6 +285,9 @@ class NomeExtractorIA(IExtractorNome):
         Returns:
             Nome do funcionário
         """
+        if not self.servico_gemini.configurado:
+            raise RuntimeError("Gemini não configurado (KEY_API_GEMINI ausente)")
+
         try:
             # ✨ TENTAR CACHE PRIMEIRO
             if cache_ocr and cache_ocr.disponivel:
@@ -294,19 +314,139 @@ class NomeExtractorIA(IExtractorNome):
             raise
 
 
-class NomeExtractorComposite(IExtractorNome):
-    """Extrator que combina OCR e IA com fallback"""
-    
+class NomeExtractorOpenCode(IExtractorNome):
+    """Extrator de nomes usando IA (OpenCode Zen/Go) com cache.
+
+    O endpoint do OpenCode é de chat (OpenAI-compatible), então enviamos a
+    imagem do cabeçalho do holerite para um modelo de visão (ex.: mimo-v2.5).
+    """
+
     def __init__(self):
-        self.ocr_extractor = NomeExtractorOCR()
-        self.ia_extractor = NomeExtractorIA()
-    
+        self.servico = OpenCodeService()
+
+    @property
+    def nome(self) -> str:
+        return "opencode"
+
     def extrair_nome(self, arquivo: Path) -> str:
+        """Extrai nome usando IA OpenCode, com cache automático por hash."""
+        if not self.servico.configurado:
+            raise RuntimeError("OpenCode não configurado (KEY_API_OPENCODE ausente)")
+
         try:
-            return self.ocr_extractor.extrair_nome(arquivo)
+            # ✨ TENTAR CACHE PRIMEIRO
+            if cache_ocr and cache_ocr.disponivel:
+                nome_cache = cache_ocr.obter_ocr(arquivo)
+                if nome_cache:
+                    logger.info(f"✓ Cache HIT para {arquivo.name}: {nome_cache}")
+                    return nome_cache
+
+            logger.debug(f"Cache miss para {arquivo.name}, chamando OpenCode ({self.servico.model})...")
+            prompt = (
+                "Me informa o nome completo do funcionário em uma única string, "
+                "devendo conter só isso e mais nada além disso."
+            )
+            nome_funcionario = self.servico.imagem(arquivo, prompt)
+            if not nome_funcionario:
+                raise RuntimeError("OpenCode retornou resposta vazia")
+
+            # Limpeza: manter apenas alfanuméricos/espaços e remover dígitos finais
+            nome_funcionario = ''.join(
+                filter(lambda x: x.isalnum() or x.isspace(), nome_funcionario)
+            )
+            nome_funcionario = re.sub(r'\d+$', '', nome_funcionario).strip()
+            logger.debug(f"Nome extraído por OpenCode: {nome_funcionario}")
+
+            if not nome_funcionario:
+                raise RuntimeError("OpenCode retornou nome vazio após limpeza")
+
+            # 💾 SALVAR NO CACHE para próximas vezes
+            if cache_ocr and cache_ocr.disponivel:
+                cache_ocr.salvar_ocr(arquivo, nome_funcionario)
+                logger.info(f"✓ Nome armazenado em cache: {nome_funcionario}")
+
+            return nome_funcionario
+
         except Exception as e:
-            logger.warning(f"OCR falhou, tentando IA: {e}")
-            return self.ia_extractor.extrair_nome(arquivo)
+            logger.error(f"Erro na extração por OpenCode: {e}")
+            raise
+
+
+# Mapa de extratores disponíveis (nome no .env -> classe)
+_EXTRATORES_DISPONIVEIS = {
+    "opencode": NomeExtractorOpenCode,
+    "gemini": NomeExtractorIA,
+    "mistral": NomeExtractorOCR,
+}
+
+# Ordem padrão caso IA_EXTRATORES não esteja definido no .env
+_ORDEM_PADRAO_EXTRATORES = ["opencode", "gemini", "mistral"]
+
+
+def _criar_extratores_ia() -> List[IExtractorNome]:
+    """Cria a cadeia de extratores conforme IA_EXTRATORES do .env.
+
+    Ex.: IA_EXTRATORES="opencode,gemini,mistral" tenta OpenCode primeiro e usa
+    Gemini/Mistral como fallback. Nomes desconhecidos são ignorados.
+    """
+    ordem_config = dotenv.get_key(caminho_dotenv(), "IA_EXTRATORES")
+    nomes = (
+        [p.strip().lower() for p in ordem_config.split(",") if p.strip()]
+        if ordem_config
+        else list(_ORDEM_PADRAO_EXTRATORES)
+    )
+
+    extratores: List[IExtractorNome] = []
+    for nome in nomes:
+        classe = _EXTRATORES_DISPONIVEIS.get(nome)
+        if not classe:
+            logger.warning(f"[ia] Extrator desconhecido em IA_EXTRATORES: '{nome}' (ignorado)")
+            continue
+        try:
+            extratores.append(classe())
+        except Exception as e:
+            logger.warning(f"[ia] Falha ao inicializar extrator '{nome}': {e}")
+
+    if not extratores:
+        logger.warning("[ia] Nenhum extrator válido configurado; usando ordem padrão")
+        extratores = [classe() for classe in (
+            NomeExtractorOpenCode, NomeExtractorIA, NomeExtractorOCR
+        )]
+
+    logger.info(
+        "[ia] Cadeia de extratores: "
+        + " -> ".join(type(e).__name__ for e in extratores)
+    )
+    return extratores
+
+
+class NomeExtractorComposite(IExtractorNome):
+    """Extrator que combina múltiplos provedores de IA com fallback.
+
+    A ordem é definida por IA_EXTRATORES no .env (padrão: OpenCode -> Gemini ->
+    Mistral). Cada provedor pode falhar (não configurado, rate limit, erro) sem
+    derrubar o processamento: o próximo da cadeia é tentado.
+    """
+
+    def __init__(self, extratores: Optional[List[IExtractorNome]] = None):
+        self.extratores = extratores if extratores is not None else _criar_extratores_ia()
+
+    def extrair_nome(self, arquivo: Path) -> str:
+        erros = []
+        for extrator in self.extratores:
+            nome_extrator = getattr(extrator, "nome", type(extrator).__name__)
+            try:
+                nome = extrator.extrair_nome(arquivo)
+                if nome and nome.strip():
+                    return nome.strip()
+                erros.append(f"{nome_extrator}: vazio")
+            except Exception as e:
+                logger.warning(f"Extrator '{nome_extrator}' falhou: {e}")
+                erros.append(f"{nome_extrator}: {e}")
+
+        raise RuntimeError(
+            "Todos os extratores de IA falharam: " + " | ".join(erros)
+        )
 
 
 class ArquivoProcessor(IArquivoProcessor):
