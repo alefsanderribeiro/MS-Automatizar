@@ -18,15 +18,11 @@
 
 > ⚠️ **v9 (deploy atual):** o dashboard embutido foi removido e, no deploy puro de API, `APP_UI_ENABLED=false`. O QR é obtido via `GET /app/login` (retorna `results.qr_link`, URL da imagem) ou por device em `GET /devices/:device_id/login`. O acesso ao painel (`/devices/list`) exige Basic Auth (`Authorization: Basic base64(user:pass)`).
 
-Acesse o painel de controle da API:
-```
-http://localhost:3000/devices/list
-```
+No deploy do servidor, a API responde em `http://servidor-ubuntu-home.tail2f0857.ts.net:3001` (porta Tailscale) ou `https://gowa.alefsander.dev` (somente na rede Tailscale).
 
 Para cada número WhatsApp que você quer usar:
-1. Clique em "Gerar QR Code"
-2. Escanear com o número WhatsApp
-3. Aguardar conexão (status: "conectado")
+1. Gere o QR (`GET /app/login`, Basic Auth) e escaneie com o número WhatsApp
+2. Aguarde a conexão (estado `logged_in` em `GET /devices`)
 
 **Resultado:**
 ```
@@ -342,15 +338,15 @@ for e in empresas:
 
 **Solução:**
 ```bash
-# 1. Acessar painel de dispositivos
-# http://localhost:3000/devices/list
+# 1. Listar dispositivos e estado (Basic Auth)
+#    curl -u "usuario:senha" https://gowa.alefsander.dev/devices
 
 # 2. Encontrar o device desconectado
 
-# 3. Clicar em "Reconectar"
-# e escanear QR Code novamente
+# 3. Reconectar: GET /devices/{device_id}/reconnect e escanear o QR
+#    (GET /devices/{device_id}/login) novamente
 
-# 4. Aguardar status "conectado"
+# 4. Aguardar estado "logged_in"
 
 # 5. Testar novamente
 ```

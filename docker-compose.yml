@@ -14,6 +14,12 @@
 #   obrigatórias definidas no .env (MONGO_ROOT_PASSWORD, REDIS_PASSWORD,
 #   WHATSAPP_BASIC_AUTH).
 #
+# 🌐 Subdomínio https://gowa.alefsander.dev (SOMENTE via Tailscale):
+#   O serviço whatsapp-api entra também na rede externa
+#   `vaultwarden_tailscale-net` para o Caddy compartilhado
+#   (caddy-proxy-tailscale, do ~/vaultwarden) rotear o subdomínio.
+#   O DNS é um A record DNS-only apontando para o IP Tailscale do servidor.
+#
 # Dentro da rede do compose, os serviços conversam pelos nomes internos
 #   (mongodb:27017, redis:6379, whatsapp-api:3000).
 # ============================================================
@@ -76,7 +82,8 @@ services:
   # APP_UI_AUTO_UPDATE=false) para evitar download em rede restrita.
   # Endpoints HTTP, header X-Device-Id e Basic Auth do projeto original.
   whatsapp-api:
-    image: aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0
+    # Pinado (não usar latest). v9.6.0 — sem breaking change p/ consumidores HTTP.
+    image: aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0
     container_name: ms-automatizar-whatsapp
     restart: unless-stopped
     ports:
@@ -100,6 +107,8 @@ services:
       - rest
     networks:
       - ms-automatizar-network
+      # Rede do Caddy compartilhado (~/vaultwarden) — habilita gowa.alefsander.dev
+      - vaultwarden_tailscale-net
     healthcheck:
       # /health é o endpoint público (sem auth). Demais endpoints exigem Basic Auth.
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
@@ -112,6 +121,10 @@ services:
 networks:
   ms-automatizar-network:
     driver: bridge
+  # Rede criada pelo compose do ~/vaultwarden (Caddy + demais serviços).
+  # Necessária para o Caddy rotear gowa.alefsander.dev -> ms-automatizar-whatsapp:3000
+  vaultwarden_tailscale-net:
+    external: true
 
 # ---------- Volumes persistentes ----------
 volumes:

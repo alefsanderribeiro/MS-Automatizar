@@ -9,6 +9,16 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ### Adicionado
 
+#### 🔄 WhatsApp API — upgrade para GOWA v9.6.0
+- **Imagem** `aldinokemal2104/go-whatsapp-web-multidevice` atualizada de `:v9.0.0` para `:v9.6.0` no `docker-compose.yml` (e no `docker-compose.ms-automatizar.yml` do servidor).
+- **Sem breaking change** para consumidores HTTP: `whatsapp_service.py` segue compatível (`/send/file`, `/send/message`, `/user/my/groups`, `/devices`, `/app/status`, Basic Auth, `X-Device-Id`).
+- Análise completa em `docs/UPGRADE_GOWA_9_6.md`.
+
+#### 🌐 Subdomínio `gowa.alefsander.dev` (somente via Tailscale)
+- API do WhatsApp exposta em `https://gowa.alefsander.dev` no servidor — DNS-only (Cloudflare) apontando para o IP Tailscale + reverse proxy no Caddy compartilhado.
+- `whatsapp-api` conectado à rede `vaultwarden_tailscale-net` para o Caddy rotear `ms-automatizar-whatsapp:3000`.
+- Continua exigindo Basic Auth; acesso restrito à tailnet.
+
 #### 🤖 OCR/IA — OpenCode (Go) + cadeia de fallback multi-provedor
 - **`OpenCodeService`**: novo provedor de IA/OCR via OpenCode Zen/Go (API OpenAI-compatible, com visão). PDFs convertidos em imagens via `pypdfium2`; extração estruturada com JSON Schema no prompt. Modelo padrão `mimo-v2.5`.
 - **Cadeia de fallback configurável** (`IA_EXTRATORES`, padrão `opencode,gemini,mistral`): se um provedor falha (sem chave, rate limit, erro), o próximo é tentado — o processamento não cai mais inteiro.

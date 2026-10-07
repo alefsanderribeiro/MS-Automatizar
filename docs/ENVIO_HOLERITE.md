@@ -245,7 +245,7 @@ docker compose -f docker-compose.ms-automatizar.yml up -d
 docker logs -f ms-automatizar-whatsapp
 ```
 
-Acesse http://localhost:3000 e escaneie o QR Code com seu WhatsApp.
+No deploy do servidor, a API fica em `http://servidor-ubuntu-home.tail2f0857.ts.net:3001` (porta Tailscale) ou `https://gowa.alefsander.dev` (somente na rede Tailscale). Pareie o WhatsApp pelo QR de `GET /app/login` (Basic Auth) — na v9 o dashboard embutido não é usado (`APP_UI_ENABLED=false`).
 
 ### 2. Configurar Zoho Mail API
 
@@ -592,7 +592,7 @@ Para cada empresa, execute a sincronizacao de grupos via interface.
 ### WhatsApp nao conectado
 
 1. Verifique se o container esta rodando: `docker ps`
-2. Acesse http://localhost:3000 e reescaneie o QR Code
+2. Gere o QR (`GET /app/login`, Basic Auth) em `https://gowa.alefsander.dev` (ou `http://<IP-Tailscale>:3001`) e reescaneie
 3. Verifique logs: `docker logs ms-automatizar-whatsapp`
 
 ### Erro: "Grupo nao encontrado"

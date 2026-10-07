@@ -140,7 +140,7 @@ docker compose ps
 |-----------------|-----------------------------------------------|---------------|----------------------------------------|
 | `mongodb`       | `mongo:8.0`                                   | `27017`       | Banco de dados principal               |
 | `redis`         | `redis:7.2-alpine`                            | `6379`        | Cache                                  |
-| `whatsapp-api`  | `aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0` | `3000` | API de WhatsApp (multidevice)          |
+| `whatsapp-api`  | `aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0` | `3000` | API de WhatsApp (multidevice)          |
 
 ### Volumes persistentes
 
@@ -161,6 +161,8 @@ Os dados persistem entre restarts (named volumes com `driver: local`):
 
 - `GET /health` — endpoint **público** (usado pelo healthcheck, sem autenticação).
 - Demais endpoints exigem **Basic Auth** (o `WHATSAPP_BASIC_AUTH` em formato `usuario:senha`).
+
+> 🌐 **No servidor**, a API também é exposta em `https://gowa.alefsander.dev`, acessível **somente pela rede Tailscale** (DNS-only + Caddy). Ver `docs/UPGRADE_GOWA_9_6.md`.
 
 ### Como o app usa essas infras
 
