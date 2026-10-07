@@ -215,15 +215,18 @@ def start_command():
     contatos_subcommands(subparsers)
     
     args = parser.parse_args()
-    
-    logger.info(f"Comando CLI iniciado: {vars(args)}")
-    
+
+    # `vars(args)` retorna {'command': None} quando nenhum subcomando é passado
+    # (caso comum ao rodar `python automatizar.py`, que abre o menu interativo).
+    # Antes o log exibia esse None como se fosse erro; agora distinguimos os casos.
     if not any(vars(args).values()):
+        logger.info("Comando CLI iniciado sem subcomando - abrindo menu interativo")
         from src.interface.menu import init_interface
         init_interface()
-        
+
     else:
-        
+        logger.info(f"Comando CLI iniciado: {args.command}")
+
         if args.command == 'folha_de_ponto':
 
             handle_folha_de_ponto(args, parser)
