@@ -27,6 +27,8 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - **Novas variáveis**: `KEY_API_OPENCODE`, `OPENCODE_BASE_URL`, `OPENCODE_MODEL_OCR`, `OPENCODE_MODEL_AI`, `IA_EXTRATORES`.
 
 ### Corrigido
+- **Log de início do CLI**: `start_command()` registrava `vars(args)` cru, exibindo `Comando CLI iniciado: {'command': None}` ao abrir o menu interativo (sem subcomando) — parecia erro, mas era o caso normal. Agora o log distingue: sem subcomando → "abrindo menu interativo"; com subcomando → `Comando CLI iniciado: <comando>`.
+- **Painel de status (WhatsApp "Off")**: `src/interface/menu.py` montava `f"{WHATSAPP_API_URL}/health"` sem normalizar; URL com barra final gerava `//health` → 401 → painel exibia "Off" mesmo com a API no ar. Agora normaliza (`rstrip("/")`) e usa timeout de 5s.
 - **GeminiService**: o nome do modelo era repassado ao `GenerateContentConfig`, causando `Extra inputs are not permitted` (ex.: `gemini-2.5-flash-lite`). Agora é capturado em `__init__`.
 - **`HoleriteProcessador.processar_arquivo`**: usava `arquivo.name` antes de converter `str`→`Path`.
 - **`MistralService`**: ganhou `documento_estruturado()` / `imagem_estruturada()` (OCR + chat JSON).
