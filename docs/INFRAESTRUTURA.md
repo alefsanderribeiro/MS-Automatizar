@@ -38,11 +38,12 @@ O MS-Automatizar roda como um stack Docker Compose com 3 serviços, todos na mes
 |---------|--------|---------------|------------|-----------|
 | **mongodb** | `mongo:8.0` | 27017 | `100.82.203.59:27018` | `ms-automatizar-mongodb` |
 | **redis** | `redis:7.2-alpine` | 6379 | `100.82.203.59:6380` | `ms-automatizar-redis` |
-| **whatsapp-api** | `aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0` | 3000 | `100.82.203.59:3001` | `ms-automatizar-whatsapp` |
+| **whatsapp-api** | `aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0` | 3000 | `100.82.203.59:3001` | `ms-automatizar-whatsapp` |
 
 ### Rede e Volumes
 
 - **Rede:** `ms-automatizar-network` (driver bridge) — os serviços conversam pelos nomes internos (`mongodb`, `redis`, `whatsapp-api`)
+- **Rede compartilhada:** o serviço `whatsapp-api` entra também na rede externa `vaultwarden_tailscale-net` (criada pelo compose do `~/vaultwarden`), para que o Caddy compartilhado roteie o subdomínio `gowa.alefsander.dev`
 - **Volumes persistentes:**
   - `mongodb_data` → `/data/db`
   - `mongodb_log` → `/var/log/mongodb`
@@ -165,11 +166,32 @@ mongorestore --uri="mongodb://alefsander:***@100.82.203.59:27018/?authSource=adm
 
 ## WhatsApp API — go-whatsapp-web-multidevice (GOWA)
 
-**Versão atual no deploy:** v9.0.0 (imagem `aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0`).
+**Versão atual no deploy:** v9.6.0 (imagem `aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0`).
 
 A atualização v8 → v9 já foi aplicada — ver [UPGRADE_GOWA_9.md](UPGRADE_GOWA_9.md) com a análise completa das mudanças v8 → v9 e os ajustes feitos no código. Na v9 o dashboard embutido foi removido (gowa-ui baixado em runtime); no deploy puro de API usamos `APP_UI_ENABLED=false` e `APP_UI_AUTO_UPDATE=false`.
 
-O pareamento do WhatsApp é feito pelo dashboard em `http://100.82.203.59:3001` (login com `WHATSAPP_BASIC_AUTH`) ou via API.
+A atualização v9.0.0 → v9.6.0 está documentada em [UPGRADE_GOWA_9_6.md](UPGRADE_GOWA_9_6.md) (sem breaking changes para consumidores HTTP).
+
+O pareamento do WhatsApp é feito pelo dashboard em `http://100.82.203.59:3001` (login com `WHATSAPP_BASIC_AUTH`) ou, via Tailscale, em `https://gowa.alefsander.dev`.
+
+### Subdomínio `gowa.alefsander.dev` (SOMENTE via Tailscale)
+
+A API do WhatsApp é exposta em `https://gowa.alefsander.dev`, acessível **apenas dentro da rede Tailscale** — mesmo padrão de `vault/health/metrics/pdf` etc.:
+
+```
+Cliente na tailnet
+   │  DNS: gowa.alefsander.dev → A (DNS-only, nuvem cinza) = 100.82.203.59
+   ▼
+Caddy (container caddy-proxy-tailscale, do ~/vaultwarden)
+   │  reverse_proxy ms-automatizar-whatsapp:3000   (rede vaultwarden_tailscale-net)
+   ▼
+ms-automatizar-whatsapp (GOWA)
+```
+
+- **Cloudflare:** A record **DNS-only** (nuvem cinza) `gowa` → `100.82.203.59`. Não usar proxy (nuvem laranja): o IP Tailscale não é alcançável pela internet, e o proxy não tem rota até a tailnet.
+- **Caddy:** bloco `gowa.alefsander.dev` no Caddyfile do `~/vaultwarden` (TLS via DNS-01 Cloudflare, `CF_API_TOKEN`).
+- **Rede:** o `whatsapp-api` precisa estar na `vaultwarden_tailscale-net` (declarado no compose).
+- **Auth:** o GOWA continua exigindo Basic Auth (`APP_BASIC_AUTH`) — a proteção de rede (Tailscale) é adicional, não substitui a senha.
 
 ### Estado esperado no primeiro boot
 

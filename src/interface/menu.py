@@ -140,9 +140,12 @@ def _verificar_ambiente_startup() -> dict:
     # Verificar WhatsApp API
     try:
         import httpx
-        api_url = os.getenv("WHATSAPP_API_URL", "")
+        # Normalizar: remover barra(s) final(is) para não gerar "//health" (a API
+        # trata a barra dupla como rota inexistente e responde 401, o que fazia o
+        # painel exibir WhatsApp como Off mesmo com a API no ar).
+        api_url = (os.getenv("WHATSAPP_API_URL", "") or "").strip().rstrip("/")
         if api_url:
-            resp = httpx.get(f"{api_url}/health", timeout=2)
+            resp = httpx.get(f"{api_url}/health", timeout=5)
             status["whatsapp_api_ok"] = resp.status_code == 200
         else:
             status["whatsapp_api_ok"] = False
