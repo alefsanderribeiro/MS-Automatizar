@@ -82,8 +82,11 @@ services:
   # APP_UI_AUTO_UPDATE=false) para evitar download em rede restrita.
   # Endpoints HTTP, header X-Device-Id e Basic Auth do projeto original.
   whatsapp-api:
-    # Pinado (não usar latest). v9.6.0 — sem breaking change p/ consumidores HTTP.
-    image: aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0
+    # Imagem LOCAL: v9.6.0 oficial + patch de nomes de grupo (PR upstream #872,
+    # ainda não mesclado). Sem ele, todo grupo novo fica como "Group <id>"
+    # para sempre. Rebuild e contexto: gowa-patch/README.md
+    # Para voltar ao oficial: aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0
+    image: gowa-patched:9.6.0-groupnames
     container_name: ms-automatizar-whatsapp
     restart: unless-stopped
     ports:
