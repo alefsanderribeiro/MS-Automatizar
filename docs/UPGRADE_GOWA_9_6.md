@@ -129,7 +129,9 @@ Esperado: `version` = `v9.6.0`, os 2 devices (`WhatsApp-MS`, `WhatsApp-MD`) aind
 
 ## 5. Rollback
 
-Se algo falhar, voltar a imagem para `:v9.0.0` no compose e recriar o container (o volume com as sessões permanece). Em último caso, restaurar o backup do volume feito antes do upgrade.
+Se algo falhar, voltar a imagem para `aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0` no compose e recriar o container (o volume com as sessões permanece). Em último caso, restaurar o backup do volume feito antes do upgrade.
+
+> Nota: desde 2026-10-22 o deploy usa a imagem local `gowa-patched:9.6.0-groupnames` (v9.6.0 + patch de nomes de grupo). Voltar ao oficial também **desfaz o patch**. Ver [GOWA_PATCH_NOMES_GRUPO.md](GOWA_PATCH_NOMES_GRUPO.md).
 
 ---
 

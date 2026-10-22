@@ -232,7 +232,8 @@ resultado = whatsapp_service.enviar_multiplos_arquivos(
 
 ```bash
 # Iniciar o grupo único (MongoDB + Redis + WhatsApp API)
-docker compose -f docker-compose.ms-automatizar.yml up -d
+# No repo o arquivo é docker-compose.yml; no servidor é docker-compose.ms-automatizar.yml
+docker compose up -d
 
 # Verificar logs do WhatsApp
 docker logs -f ms-automatizar-whatsapp

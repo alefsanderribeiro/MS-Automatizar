@@ -994,11 +994,8 @@ ENVIO_RETRY_DELAY_SECONDS=5
 ### 13.3 Docker
 
 ```bash
-# WhatsApp API
-docker compose -f docker-compose.whatsapp.yml up -d
-
-# Redis (opcional)
-docker compose -f docker-compose.redis.yml up -d
+# MongoDB + Redis + WhatsApp API (grupo único)
+docker compose up -d
 ```
 
 ---

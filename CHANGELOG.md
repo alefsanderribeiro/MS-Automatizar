@@ -9,6 +9,15 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ### Adicionado
 
+#### 🩹 WhatsApp API — imagem local com patch de nomes de grupo
+- **Imagem** passa a ser `gowa-patched:9.6.0-groupnames` (local) no `docker-compose.yml`: GOWA **v9.6.0 oficial + patch próprio**.
+- **Motivo:** o v9.6.0 grava todo grupo novo como `Group <id>` no `chatstorage.db` e nunca corrige, mesmo conhecendo o subject. O fix upstream (PR [#872](https://github.com/aldinokemal/go-whatsapp-web-multidevice/pull/872), issue [#879](https://github.com/aldinokemal/go-whatsapp-web-multidevice/issues/879)) segue **sem merge**.
+- **Patch:** em `infrastructure/chatstorage/sqlite_repository.go`, quando o nome calculado é exatamente o placeholder, consulta `GetGroupInfo`/`GetNewsletterInfo` e grava `Group <subject>`. Timeout de 5s; falha mantém o placeholder e tenta de novo na próxima mensagem. Sem migração e sem request extra no caminho normal.
+- **Pasta `gowa-patch/`:** o patch (`0001-group-chat-names.patch`), `rebuild.sh` (reconstrói via API do Docker, sem precisar da CLI), e scripts de operação — `fetch-group-names.py`, `backfill-names.py` (corrige nomes já gravados, dry-run por padrão), `verify-names.py`, `healthcheck.py`, `cleanup.py` (remove órfãos/mídia antiga) e `maintenance.py` (stop → cleanup → start → healthcheck).
+- **Sem credenciais no repo:** os scripts leem `WHATSAPP_BASIC_AUTH` do `.env` em runtime. `group-names.json` fica fora do versionamento (contém nomes de grupos de clientes).
+- Documentação: [`docs/GOWA_PATCH_NOMES_GRUPO.md`](docs/GOWA_PATCH_NOMES_GRUPO.md).
+- **Quando o upstream mesclar o #872:** voltar `image:` para `aldinokemal2104/go-whatsapp-web-multidevice:vX.Y.Z` e aposentar a pasta.
+
 #### 🔄 WhatsApp API — upgrade para GOWA v9.6.0
 - **Imagem** `aldinokemal2104/go-whatsapp-web-multidevice` atualizada de `:v9.0.0` para `:v9.6.0` no `docker-compose.yml` (e no `docker-compose.ms-automatizar.yml` do servidor).
 - **Sem breaking change** para consumidores HTTP: `whatsapp_service.py` segue compatível (`/send/file`, `/send/message`, `/user/my/groups`, `/devices`, `/app/status`, Basic Auth, `X-Device-Id`).
@@ -32,6 +41,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - **GeminiService**: o nome do modelo era repassado ao `GenerateContentConfig`, causando `Extra inputs are not permitted` (ex.: `gemini-2.5-flash-lite`). Agora é capturado em `__init__`.
 - **`HoleriteProcessador.processar_arquivo`**: usava `arquivo.name` antes de converter `str`→`Path`.
 - **`MistralService`**: ganhou `documento_estruturado()` / `imagem_estruturada()` (OCR + chat JSON).
+- **README / AGENTS / INFRAESTRUTURA:** tabelas de serviços apontavam para a imagem oficial `v9.6.0` (e o AGENTS ainda estava em `v9.0.0`).
+- **`specs/folha-de-ponto.md` e `specs/holerite.md`:** comandos citavam `docker-compose.whatsapp.yml` e `docker-compose.redis.yml`, que **não existem** — o repo tem um compose único (`docker-compose.yml`).
+- **`docs/ENVIO_FOLHAS_PONTO.md` e `docs/ENVIO_HOLERITE.md`:** usavam `-f docker-compose.ms-automatizar.yml`, nome que só existe no servidor; agora usam o padrão do repo e citam a variante do servidor.
+- **`docs/UPGRADE_GOWA_9_6.md`:** rollback dizia voltar para `:v9.0.0`; corrigido para `v9.6.0` e acrescentado aviso de que voltar ao oficial desfaz o patch.
 
 ### Notas
 - Gemini e Mistral permanecem suportados (fallback). A Folha de Ponto continua usando Gemini diretamente.

@@ -58,7 +58,7 @@ Só toca em linhas cujo `name` ainda é o placeholder exato — nomes reais fica
 1. Confirmar que a release contém o merge do #872.
 2. Trocar a imagem no compose de volta para
    `aldinokemal2104/go-whatsapp-web-multidevice:vX.Y.Z`.
-3. `docker compose -f docker-compose.ms-automatizar.yml up -d whatsapp-api`.
+3. `docker compose up -d whatsapp-api` (no servidor: `-f docker-compose.ms-automatizar.yml`).
 4. Aposentar esta pasta `gowa-patch/`.
 
 ## Notas

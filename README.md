@@ -107,7 +107,7 @@ python -m automatizar folha ...
 
 ## 🚀 Rodando com Docker
 
-Suba **MongoDB 8.0**, **Redis 7.2** e a **WhatsApp API v9** (go-whatsapp-web-multidevice) de uma vez, com volumes persistentes, usando o `docker-compose.yml` na raiz do repositório.
+Suba **MongoDB 8.0**, **Redis 7.2** e a **WhatsApp API v9.6.0** (go-whatsapp-web-multidevice, com patch local de nomes de grupo) de uma vez, com volumes persistentes, usando o `docker-compose.yml` na raiz do repositório.
 
 ### Pré-requisitos
 
@@ -140,7 +140,24 @@ docker compose ps
 |-----------------|-----------------------------------------------|---------------|----------------------------------------|
 | `mongodb`       | `mongo:8.0`                                   | `27017`       | Banco de dados principal               |
 | `redis`         | `redis:7.2-alpine`                            | `6379`        | Cache                                  |
-| `whatsapp-api`  | `aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0` | `3000` | API de WhatsApp (multidevice)          |
+| `whatsapp-api`  | `gowa-patched:9.6.0-groupnames` (imagem local, ver abaixo) | `3000` | API de WhatsApp (multidevice) |
+
+### Imagem local do WhatsApp API (patch de nomes de grupo)
+
+O `whatsapp-api` **não usa a imagem oficial** diretamente. A imagem `gowa-patched:9.6.0-groupnames`
+é o GOWA **v9.6.0 + o patch de nomes de grupo** (PR upstream
+[#872](https://github.com/aldinokemal/go-whatsapp-web-multidevice/pull/872), ainda não mesclado).
+
+Sem o patch, todo grupo novo é gravado como `Group <id>` no `chatstorage.db` e nunca corrigido.
+
+```bash
+# reconstruir a imagem (precisa de Docker + internet)
+cd gowa-patch && ./rebuild.sh
+```
+
+Detalhes, scripts de manutenção (backfill de nomes, limpeza de órfãos, healthcheck) e o
+procedimento para voltar à imagem oficial quando o PR for mesclado:
+[`docs/GOWA_PATCH_NOMES_GRUPO.md`](docs/GOWA_PATCH_NOMES_GRUPO.md).
 
 ### Volumes persistentes
 

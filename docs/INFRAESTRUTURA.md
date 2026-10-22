@@ -38,7 +38,7 @@ O MS-Automatizar roda como um stack Docker Compose com 3 serviços, todos na mes
 |---------|--------|---------------|------------|-----------|
 | **mongodb** | `mongo:8.0` | 27017 | `100.82.203.59:27018` | `ms-automatizar-mongodb` |
 | **redis** | `redis:7.2-alpine` | 6379 | `100.82.203.59:6380` | `ms-automatizar-redis` |
-| **whatsapp-api** | `aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0` | 3000 | `100.82.203.59:3001` | `ms-automatizar-whatsapp` |
+| **whatsapp-api** | `gowa-patched:9.6.0-groupnames` (local) | 3000 | `100.82.203.59:3001` | `ms-automatizar-whatsapp` |
 
 ### Rede e Volumes
 
@@ -166,7 +166,9 @@ mongorestore --uri="mongodb://alefsander:***@100.82.203.59:27018/?authSource=adm
 
 ## WhatsApp API — go-whatsapp-web-multidevice (GOWA)
 
-**Versão atual no deploy:** v9.6.0 (imagem `aldinokemal2104/go-whatsapp-web-multidevice:v9.6.0`).
+**Versão atual no deploy:** v9.6.0 + patch de nomes de grupo (imagem local `gowa-patched:9.6.0-groupnames`).
+
+> ⚠️ A imagem é **local**, não vem do Docker Hub. O `docker pull` da imagem oficial não a substitui. Rebuild e contexto em [GOWA_PATCH_NOMES_GRUPO.md](GOWA_PATCH_NOMES_GRUPO.md).
 
 A atualização v8 → v9 já foi aplicada — ver [UPGRADE_GOWA_9.md](UPGRADE_GOWA_9.md) com a análise completa das mudanças v8 → v9 e os ajustes feitos no código. Na v9 o dashboard embutido foi removido (gowa-ui baixado em runtime); no deploy puro de API usamos `APP_UI_ENABLED=false` e `APP_UI_AUTO_UPDATE=false`.
 

@@ -198,6 +198,8 @@ MS-Automatizar/
 │   ├── folha-de-ponto.md
 │   └── holerite.md
 │
+├── gowa-patch/                        # Patch local de nomes de grupo do GOWA (imagem própria)
+│
 ├── docker-compose.yml                 # ⭐ GRUPO ÚNICO: MongoDB 8.0 + Redis 7.2 + WhatsApp API
 │
 └── (scripts de manutenção/migração ficam fora do público — não incluídos)
@@ -551,10 +553,11 @@ O repo traz `docker-compose.yml` — MongoDB + Redis + WhatsApp API sobem juntos
 |-----------|--------|-----------|----------------|-----|
 | ms-automatizar-mongodb | mongo:8.0 | ${MONGO_PORT:-27017} | 27017 | Banco de dados |
 | ms-automatizar-redis | redis:7.2-alpine | ${REDIS_PORT:-6379} | 6379 | Cache |
-| ms-automatizar-whatsapp | aldinokemal2104/go-whatsapp-web-multidevice:v9.0.0 | ${WHATSAPP_PORT:-3001} | 3000 | API REST do WhatsApp |
+| ms-automatizar-whatsapp | gowa-patched:9.6.0-groupnames (local) | ${WHATSAPP_PORT:-3001} | 3000 | API REST do WhatsApp |
 
 - Por padrão o bind é `127.0.0.1` (`BIND_IP`); use `BIND_IP=0.0.0.0` (somente em rede privada) se precisar expor na rede local/VPN.
 - Autenticação obrigatória: `MONGO_ROOT_PASSWORD`, `REDIS_PASSWORD`, `WHATSAPP_BASIC_AUTH` (definidos no `.env`).
+- A imagem do WhatsApp é **local** (`gowa-patched:9.6.0-groupnames` = v9.6.0 + patch de nomes de grupo). Rebuild: `cd gowa-patch && ./rebuild.sh`. Ver `docs/GOWA_PATCH_NOMES_GRUPO.md`.
 - Dentro da rede do compose, os serviços conversam pelos nomes internos (`mongodb:27017`, `redis:6379`, `whatsapp-api:3000`).
 
 **Subir:**
