@@ -15,10 +15,12 @@
 #   WHATSAPP_BASIC_AUTH).
 #
 # 🌐 Subdomínio https://gowa.alefsander.dev (SOMENTE via Tailscale):
-#   O serviço whatsapp-api entra também na rede externa
-#   `vaultwarden_tailscale-net` para o Caddy compartilhado
-#   (caddy-proxy-tailscale, do ~/vaultwarden) rotear o subdomínio.
+#   O serviço whatsapp-api entra também na rede externa `edge` para o
+#   Caddy de borda (projeto ~/caddy, container caddy-proxy-tailscale)
+#   rotear o subdomínio resolvendo `ms-automatizar-whatsapp:3000`.
 #   O DNS é um A record DNS-only apontando para o IP Tailscale do servidor.
+#   A rede `edge` é criada uma vez por host, FORA de qualquer compose:
+#     docker network create edge
 #
 # Dentro da rede do compose, os serviços conversam pelos nomes internos
 #   (mongodb:27017, redis:6379, whatsapp-api:3000).
@@ -29,11 +31,11 @@ name: ms-automatizar
 services:
   # ---------- MongoDB 8.0 ----------
   mongodb:
-    image: mongo:8.0
+    image: mongo:8.2.12
     container_name: ms-automatizar-mongodb
     restart: unless-stopped
     ports:
-      - "${BIND_IP:-127.0.0.1}:${MONGO_PORT:-27017}:27017"
+      - "${BIND_IP:-127.0.0.1}:${MONGO_PORT:-27018}:27017"
     environment:
       # Workaround de compatibilidade de kernel (glibc RSEQ) para MongoDB 8.x
       - GLIBC_TUNABLES=glibc.pthread.rseq=1
@@ -60,7 +62,7 @@ services:
     container_name: ms-automatizar-redis
     restart: unless-stopped
     ports:
-      - "${BIND_IP:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+      - "${BIND_IP:-127.0.0.1}:${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     command: >
@@ -79,7 +81,6 @@ services:
 
   # ---------- WhatsApp API (go-whatsapp-web-multidevice) ----------
   # Deploy puro de API: dashboard desabilitado (APP_UI_ENABLED=false e
-  # APP_UI_AUTO_UPDATE=false) para evitar download em rede restrita.
   # Endpoints HTTP, header X-Device-Id e Basic Auth do projeto original.
   whatsapp-api:
     # Imagem LOCAL: v9.6.0 oficial + patch de nomes de grupo (PR upstream #872,
@@ -96,9 +97,12 @@ services:
       - APP_DEBUG=false
       - APP_LOG_LEVEL=INFO
       - APP_ACCOUNT_VALIDATION=false
-      # v9: dashboard externo (gowa-ui) — desabilitado para deploy puro de API
-      - APP_UI_ENABLED=false
-      - APP_UI_AUTO_UPDATE=false
+      # ---------- Dashboard (gowa-ui) ----------
+      # A UI é baixada do GitHub no boot e servida em "/" atrás do Basic Auth.
+      # Vem habilitada por padrão; explícito aqui para não depender de default.
+      - APP_UI_ENABLED=true
+      - APP_UI_AUTO_UPDATE=true
+      - APP_UI_UPDATE_INTERVAL=3h
       # Basic Auth OBRIGATÓRIO (formato: usuario:senha)
       # O client (whatsapp_service.py) envia Authorization: Basic base64(user:pass)
       - APP_BASIC_AUTH=${WHATSAPP_BASIC_AUTH:?Defina WHATSAPP_BASIC_AUTH no .env (formato usuario:senha)}
@@ -110,8 +114,8 @@ services:
       - rest
     networks:
       - ms-automatizar-network
-      # Rede do Caddy compartilhado (~/vaultwarden) — habilita gowa.alefsander.dev
-      - vaultwarden_tailscale-net
+      # Rede de borda compartilhada (projeto ~/caddy) — habilita gowa.alefsander.dev
+      - edge
     healthcheck:
       # /health é o endpoint público (sem auth). Demais endpoints exigem Basic Auth.
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
@@ -124,10 +128,14 @@ services:
 networks:
   ms-automatizar-network:
     driver: bridge
-  # Rede criada pelo compose do ~/vaultwarden (Caddy + demais serviços).
-  # Necessária para o Caddy rotear gowa.alefsander.dev -> ms-automatizar-whatsapp:3000
-  vaultwarden_tailscale-net:
+  # Rede de borda criada uma vez por host, FORA de qualquer compose:
+  #   docker network create edge
+  # Necessária para o Caddy (~/caddy) rotear
+  # gowa.alefsander.dev -> ms-automatizar-whatsapp:3000
+  # Por ser externa, nenhum `docker compose down` consegue removê-la.
+  edge:
     external: true
+    name: edge
 
 # ---------- Volumes persistentes ----------
 volumes:
